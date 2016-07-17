@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
+﻿
+// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 #if SILICONSTUDIO_PLATFORM_ANDROID
 using System;
@@ -13,24 +14,24 @@ namespace SiliconStudio.Xenko.Graphics
         internal static Action<int, int, PresentationParameters> ProcessPresentationParametersOverride;
 
         private AndroidGameView gameWindow;
-        private Texture backBuffer;
+        private readonly Texture backBuffer;
+        private readonly GraphicsDevice graphicsDevice;
+        private readonly PresentationParameters startingPresentationParameters;
 
         public SwapChainGraphicsPresenter(GraphicsDevice device, PresentationParameters presentationParameters) : base(device, presentationParameters)
         {
+            gameWindow = (AndroidGameView)Description.DeviceWindowHandle.NativeWindow;
+
+            graphicsDevice = device;
+            startingPresentationParameters = presentationParameters;
             device.InitDefaultRenderTarget(Description);
 
             backBuffer = Texture.New2D(device, Description.BackBufferWidth, Description.BackBufferHeight, presentationParameters.BackBufferFormat, TextureFlags.RenderTarget | TextureFlags.ShaderResource);
         }
 
-        public override Texture BackBuffer
-        {
-            get { return backBuffer; }
-        }
+        public override Texture BackBuffer => backBuffer;
 
-        public override object NativePresenter
-        {
-            get { return null; }
-        }
+        public override object NativePresenter => null;
 
         public override bool IsFullScreen
         {
@@ -44,59 +45,56 @@ namespace SiliconStudio.Xenko.Graphics
             }
         }
 
-        protected override void ProcessPresentationParameters()
+        public override void EndDraw(CommandList commandList, bool present)
         {
-            // Use aspect ratio of device
-            gameWindow = (AndroidGameView)Description.DeviceWindowHandle.NativeHandle;
-            var panelWidth = gameWindow.Size.Width;
-            var panelHeight = gameWindow.Size.Height;
-            var panelRatio = (float)panelWidth / panelHeight;
-
-            var handler = ProcessPresentationParametersOverride; // TODO remove this hack when swap chain creation process is properly designed and flexible.
-            if(handler != null) // override
+            if (present)
             {
-                handler(panelWidth, panelHeight, Description);
-            }
-            else // default behavior
-            {
-                var desiredWidth = Description.BackBufferWidth;
-                var desiredHeight = Description.BackBufferHeight;
+                GraphicsDevice.WindowProvidedRenderTexture.InternalSetSize(gameWindow.Width, gameWindow.Height);
 
-                if (panelRatio >= 1.0f) // Landscape => use height as base
-                {
-                    Description.BackBufferHeight = (int)(desiredWidth / panelRatio);
-                }
-                else // Portrait => use width as base
-                {
-                    Description.BackBufferWidth = (int)(desiredHeight * panelRatio);
-                }
+                // If we made a fake render target to avoid OpenGL limitations on window-provided back buffer, let's copy the rendering result to it
+                commandList.CopyScaler2D(backBuffer, GraphicsDevice.WindowProvidedRenderTexture,
+                    new Rectangle(0, 0, backBuffer.Width, backBuffer.Height),
+                    new Rectangle(0, 0, GraphicsDevice.WindowProvidedRenderTexture.Width, GraphicsDevice.WindowProvidedRenderTexture.Height), true);
+
+                gameWindow.GraphicsContext.SwapBuffers();
             }
         }
 
         public override void Present()
         {
-            GraphicsDevice.Begin();
-
-            GraphicsDevice.windowProvidedRenderTexture.InternalSetSize(gameWindow.Width, gameWindow.Height);
-
-            // If we made a fake render target to avoid OpenGL limitations on window-provided back buffer, let's copy the rendering result to it
-            if (backBuffer != GraphicsDevice.windowProvidedRenderTexture)
-                GraphicsDevice.CopyScaler2D(backBuffer, GraphicsDevice.windowProvidedRenderTexture,
-                    new Rectangle(0, 0, backBuffer.Width, backBuffer.Height),
-                    new Rectangle(0, 0, GraphicsDevice.windowProvidedRenderTexture.Width, GraphicsDevice.windowProvidedRenderTexture.Height), true);
-
-            ((AndroidGraphicsContext)gameWindow.GraphicsContext).Swap();
-
-            GraphicsDevice.End();
         }
 
         protected override void ResizeBackBuffer(int width, int height, PixelFormat format)
         {
+            graphicsDevice.OnDestroyed();
+
+            startingPresentationParameters.BackBufferWidth = width;
+            startingPresentationParameters.BackBufferHeight = height;
+
+            graphicsDevice.InitDefaultRenderTarget(startingPresentationParameters);
+
+            var newTextureDescrition = backBuffer.Description;
+            newTextureDescrition.Width = width;
+            newTextureDescrition.Height = height;
+
+            // Manually update the texture
+            backBuffer.OnDestroyed();
+
+            // Put it in our back buffer texture
+            backBuffer.InitializeFrom(newTextureDescrition);
         }
 
         protected override void ResizeDepthStencilBuffer(int width, int height, PixelFormat format)
         {
-            ReleaseCurrentDepthStencilBuffer();
+            var newTextureDescrition = DepthStencilBuffer.Description;
+            newTextureDescrition.Width = width;
+            newTextureDescrition.Height = height;
+
+            // Manually update the texture
+            DepthStencilBuffer.OnDestroyed();
+
+            // Put it in our back buffer texture
+            DepthStencilBuffer.InitializeFrom(newTextureDescrition);
         }
     }
 }

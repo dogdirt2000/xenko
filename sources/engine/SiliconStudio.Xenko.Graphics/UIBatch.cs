@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using SiliconStudio.Core.Mathematics;
+using SiliconStudio.Xenko.Rendering;
 
 namespace SiliconStudio.Xenko.Graphics
 {
@@ -27,12 +28,25 @@ namespace SiliconStudio.Xenko.Graphics
         /// </summary>
         private Matrix viewProjectionMatrix;
 
+        // Cached states
+        private BlendStateDescription? currentBlendState;
+        private SamplerState currentSamplerState;
+        private RasterizerStateDescription? currentRasterizerState;
+        private DepthStencilStateDescription? currentDepthStencilState;
+        private int currentStencilValue;
+
         private Vector4 vector4LeftTop = new Vector4(-0.5f, -0.5f, -0.5f, 1);
 
         private readonly Vector4[] shiftVectorX = new Vector4[4];
         private readonly Vector4[] shiftVectorY = new Vector4[4];
 
         private readonly Texture whiteTexture;
+
+        private readonly EffectInstance SignedDistanceFieldFontEffect;
+
+        private readonly EffectInstance sdfSpriteFontEffect;
+
+        public EffectInstance SDFSpriteFontEffect { get { return sdfSpriteFontEffect; }  }
 
         static UIBatch()
         {
@@ -134,36 +148,61 @@ namespace SiliconStudio.Xenko.Graphics
         {
             // Create a 1x1 pixel white texture
             whiteTexture = GraphicsDevice.GetSharedWhiteTexture();
+
+            //  Load custom font rendering effects here
+
+            // For signed distance field font rendering
+            SignedDistanceFieldFontEffect = new EffectInstance(new Effect(device, SignedDistanceFieldFontShader.Bytecode) { Name = "UIBatchSignedDistanceFieldFontEffect" });
+
+            // For signed distance field thumbnail rendering
+            sdfSpriteFontEffect = new EffectInstance(new Effect(device, SpriteSignedDistanceFieldFontShader.Bytecode) { Name = "UIBatchSDFSpriteFontEffect" });
         }
 
         /// <summary>
         /// Begins a image batch rendering using the specified blend state, depth stencil and a view-projection transformation matrix. 
         /// Passing null for any of the state objects selects the default default state objects (BlendState.AlphaBlend, DepthStencilState.None).
         /// </summary>
+        /// <param name="graphicsContext">The graphics context to use.</param>
         /// <param name="blendState">Blending options.</param>
         /// <param name="depthStencilState">Depth and stencil options.</param>
         /// <param name="viewProjection">The view projection matrix used for this series of draw calls</param>
         /// <param name="stencilValue">The value of the stencil buffer to take as reference</param>
-        public void Begin(ref Matrix viewProjection, BlendState blendState, DepthStencilState depthStencilState, int stencilValue)
+        /// <param name="overrideEffect">The number of the override effect to use, if any</param>
+        public void Begin(GraphicsContext graphicsContext, ref Matrix viewProjection, BlendStateDescription? blendState, DepthStencilStateDescription? depthStencilState, int stencilValue)
         {
-            Begin(ref viewProjection, blendState, null, null, depthStencilState, stencilValue);
-        }        
-        
+            Begin(graphicsContext, ref viewProjection, blendState, null, null, depthStencilState, stencilValue);
+        }
+
         /// <summary>
         /// Begins a image batch rendering using the specified blend state, sampler, depth stencil, rasterizer state objects, and the view-projection transformation matrix. 
         /// Passing null for any of the state objects selects the default default state objects (BlendState.AlphaBlend, DepthStencilState.None, RasterizerState.CullCounterClockwise, SamplerState.LinearClamp). 
         /// </summary>
+        /// <param name="graphicsContext">The graphics context to use.</param>
         /// <param name="blendState">Blending options.</param>
         /// <param name="samplerState">Texture sampling options.</param>
         /// <param name="depthStencilState">Depth and stencil options.</param>
         /// <param name="rasterizerState">Rasterization options.</param>
         /// <param name="viewProjection">The view projection matrix used for this series of draw calls</param>
         /// <param name="stencilValue">The value of the stencil buffer to take as reference</param>
-        public void Begin(ref Matrix viewProjection, BlendState blendState, SamplerState samplerState, RasterizerState rasterizerState, DepthStencilState depthStencilState, int stencilValue)
+        public void Begin(GraphicsContext graphicsContext, ref Matrix viewProjection, BlendStateDescription? blendState, SamplerState samplerState, RasterizerStateDescription? rasterizerState, DepthStencilStateDescription? depthStencilState, int stencilValue)
         {
             viewProjectionMatrix = viewProjection;
 
-            Begin(null, null, SpriteSortMode.BackToFront, blendState, samplerState, depthStencilState, rasterizerState, stencilValue);
+            currentBlendState = blendState;
+            currentSamplerState = samplerState;
+            currentRasterizerState = rasterizerState;
+            currentDepthStencilState = depthStencilState;
+            currentStencilValue = stencilValue;
+
+            Begin(graphicsContext, null, SpriteSortMode.BackToFront, blendState, samplerState, depthStencilState, rasterizerState, stencilValue);
+        }
+
+        public void BeginCustom(GraphicsContext graphicsContext, int overrideEffect)
+        {
+            EffectInstance effect = (overrideEffect == 0) ? null : SignedDistanceFieldFontEffect;
+
+            Begin(graphicsContext, effect, SpriteSortMode.BackToFront, 
+                currentBlendState, currentSamplerState, currentDepthStencilState, currentRasterizerState, currentStencilValue);
         }
 
         /// <summary>
@@ -387,37 +426,6 @@ namespace SiliconStudio.Xenko.Graphics
             Draw(texture, ref elementInfo);
         }
 
-        /// <summary>
-        /// Batch the draws required to display the provided text to the draw list.
-        /// </summary>
-        /// <param name="fontSize">The size to use when rendering the font in virtual pixels</param>
-        /// <param name="internalScales">The internal scales to apply on the font glyphs</param>
-        /// <param name="text">The text to draw on the screen</param>
-        /// <param name="worldMatrix">The world matrix of the element</param>
-        /// <param name="elementSize">The 2D size of the element to draw in virtual pixels</param>
-        /// <param name="color">The color of the text to draw</param>
-        /// <param name="alignment">The alignment of the text to draw</param>
-        /// <param name="depthBias">The depth bias of the ui element</param>
-        /// <param name="font">The fond to use to draw the text</param>
-        /// <param name="snapText">Indicate if the rendered string should be snapped to the closed pixel.</param>
-        public void DrawString(SpriteFont font, string text, float fontSize, ref Vector2 internalScales, ref Matrix worldMatrix, ref Vector2  elementSize, 
-                                ref Color color, TextAlignment alignment, int depthBias, bool snapText)
-        {
-            var drawCommand = new SpriteFont.InternalUIDrawCommand
-                {
-                    Matrix = worldMatrix, 
-                    Batch = this, 
-                    Color = color, 
-                    DepthBias = depthBias, 
-                    FontScale = internalScales,
-                    SnapText = snapText,
-                    Alignment = alignment,
-                    Size = elementSize,
-                };
-
-            DrawString(font, text, ref drawCommand);
-        }
-
         internal void DrawString(SpriteFont font, string text, ref SpriteFont.InternalUIDrawCommand drawCommand)
         {
             if (font == null)
@@ -429,28 +437,36 @@ namespace SiliconStudio.Xenko.Graphics
             var proxy = new SpriteFont.StringProxy(text);
 
             // shift the string position so that it is written from the left/top corner of the element
-            var offsets = drawCommand.Size / 2;
+            var leftTopCornerOffset = drawCommand.TextBoxSize / 2;
             var worldMatrix = drawCommand.Matrix;
-            worldMatrix.M41 -= worldMatrix.M11 * offsets.X + worldMatrix.M21 * offsets.Y;
-            worldMatrix.M42 -= worldMatrix.M12 * offsets.X + worldMatrix.M22 * offsets.Y;
-            worldMatrix.M43 -= worldMatrix.M13 * offsets.X + worldMatrix.M23 * offsets.Y;
+            worldMatrix.M41 -= worldMatrix.M11 * leftTopCornerOffset.X + worldMatrix.M21 * leftTopCornerOffset.Y;
+            worldMatrix.M42 -= worldMatrix.M12 * leftTopCornerOffset.X + worldMatrix.M22 * leftTopCornerOffset.Y;
+            worldMatrix.M43 -= worldMatrix.M13 * leftTopCornerOffset.X + worldMatrix.M23 * leftTopCornerOffset.Y;
 
             // transform the world matrix into the world view project matrix
             Matrix.MultiplyTo(ref worldMatrix, ref viewProjectionMatrix, out drawCommand.Matrix);
 
             // do not snap static fonts when real/virtual resolution does not match.
-            if (!font.IsDynamic && (drawCommand.FontScale.X != 1 || drawCommand.FontScale.Y != 1)) 
+            if (font.FontType == SpriteFontType.SDF)
             {
-                drawCommand.SnapText = false;   // we don't want snapping of the resolution of the screen does not match virtual resolution. (character alignment problems)
-                drawCommand.FontScale = Vector2.One; // ensure that static font are not scaled internally
+                drawCommand.SnapText = false;
+                float scaling = drawCommand.RequestedFontSize / font.Size;
+                drawCommand.RealVirtualResolutionRatio = 1 / new Vector2(scaling, scaling);
+            }
+            else if ((font.FontType == SpriteFontType.Static)) 
+            {
+                if ((drawCommand.RealVirtualResolutionRatio.X != 1 || drawCommand.RealVirtualResolutionRatio.Y != 1))
+                    drawCommand.SnapText = false;   // we don't want snapping of the resolution of the screen does not match virtual resolution. (character alignment problems)
+
+                drawCommand.RealVirtualResolutionRatio = Vector2.One; // ensure that static font are not scaled internally
             }
 
             // snap draw start position to prevent characters to be drawn in between two pixels
             if (drawCommand.SnapText)
             {
                 var invW = 1.0f / drawCommand.Matrix.M44;
-                var backBufferHalfWidth = GraphicsDevice.BackBuffer.ViewWidth / 2;
-                var backBufferHalfHeight = GraphicsDevice.BackBuffer.ViewHeight / 2;
+                var backBufferHalfWidth = GraphicsContext.CommandList.RenderTarget.ViewWidth / 2;
+                var backBufferHalfHeight = GraphicsContext.CommandList.RenderTarget.ViewHeight / 2;
 
                 drawCommand.Matrix.M41 *= invW;
                 drawCommand.Matrix.M42 *= invW;
@@ -460,7 +476,7 @@ namespace SiliconStudio.Xenko.Graphics
                 drawCommand.Matrix.M42 /= invW;
             }
 
-            font.InternalUIDraw(ref proxy, ref drawCommand);
+            font.InternalUIDraw(GraphicsContext.CommandList, ref proxy, ref drawCommand);
         }
 
         protected override unsafe void UpdateBufferValuesFromElementInfo(ref ElementInfo elementInfo, IntPtr vertexPtr, IntPtr indexPtr, int vertexOffset)
@@ -511,7 +527,7 @@ namespace SiliconStudio.Xenko.Graphics
 
                         vertex->Position.X = currentPosition.X;
                         vertex->Position.Y = currentPosition.Y;
-                        vertex->Position.Z = currentPosition.Z - currentPosition.W * drawInfo->DepthBias * DepthBiasShiftOneUnit;
+                        vertex->Position.Z = currentPosition.Z - currentPosition.W*drawInfo->DepthBias*DepthBiasShiftOneUnit;
                         vertex->Position.W = currentPosition.W;
 
                         vertex++;
@@ -569,7 +585,7 @@ namespace SiliconStudio.Xenko.Graphics
 
                     vertex->Position.X = currentPosition.X;
                     vertex->Position.Y = currentPosition.Y;
-                    vertex->Position.Z = currentPosition.Z - (currentPosition.W * drawInfo->DepthBias * DepthBiasShiftOneUnit);
+                    vertex->Position.Z = currentPosition.Z - currentPosition.W * drawInfo->DepthBias * DepthBiasShiftOneUnit;
                     vertex->Position.W = currentPosition.W;
 
                     vertex->Color = drawInfo->Color;
@@ -592,8 +608,8 @@ namespace SiliconStudio.Xenko.Graphics
             if (drawInfo->SnapImage)
             {
                 var invW = 1.0f / currentPosition.W;
-                var backBufferHalfWidth = GraphicsDevice.BackBuffer.ViewWidth / 2;
-                var backBufferHalfHeight = GraphicsDevice.BackBuffer.ViewHeight / 2;
+                var backBufferHalfWidth = GraphicsContext.CommandList.RenderTarget.ViewWidth / 2;
+                var backBufferHalfHeight = GraphicsContext.CommandList.RenderTarget.ViewHeight / 2;
 
                 currentPosition.X *= invW;
                 currentPosition.Y *= invW;
@@ -623,8 +639,8 @@ namespace SiliconStudio.Xenko.Graphics
 
                     if (drawInfo->SnapImage)
                     {
-                        var backBufferHalfWidth = GraphicsDevice.BackBuffer.ViewWidth / 2;
-                        var backBufferHalfHeight = GraphicsDevice.BackBuffer.ViewHeight / 2;
+                        var backBufferHalfWidth = GraphicsContext.CommandList.RenderTarget.ViewWidth / 2;
+                        var backBufferHalfHeight = GraphicsContext.CommandList.RenderTarget.ViewHeight / 2;
                         vertex->Position.X = (float)(Math.Round(vertex->Position.X * backBufferHalfWidth) / backBufferHalfWidth);
                         vertex->Position.Y = (float)(Math.Round(vertex->Position.Y * backBufferHalfHeight) / backBufferHalfHeight);
                     }
@@ -683,10 +699,10 @@ namespace SiliconStudio.Xenko.Graphics
             public bool SnapImage;
             public PrimitiveType Primitive;
 
-            public float CalculateDepthOrigin()
-            {
-                return LeftTopCornerWorld.Z / LeftTopCornerWorld.W - DepthBias * DepthBiasShiftOneUnit;
-            }
+            //public float CalculateDepthOrigin()
+            //{
+            //    return LeftTopCornerWorld.Z / LeftTopCornerWorld.W - DepthBias * DepthBiasShiftOneUnit;
+            //}
         }
     }
 }

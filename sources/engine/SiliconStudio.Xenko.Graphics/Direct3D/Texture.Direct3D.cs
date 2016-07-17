@@ -1,7 +1,7 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
-#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D 
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D11
 // Copyright (c) 2010-2012 SharpDX - Alexandre Mutel
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,6 +33,10 @@ namespace SiliconStudio.Xenko.Graphics
         private RenderTargetView renderTargetView;
         private DepthStencilView depthStencilView;
         internal bool HasStencil;
+
+        private int TexturePixelSize => Format.SizeInBytes();
+        private const int TextureRowPitchAlignment = 1;
+        private const int TextureSubresourceAlignment = 1;
 
         internal DepthStencilView NativeDepthStencilView
         {
@@ -78,7 +82,7 @@ namespace SiliconStudio.Xenko.Graphics
 
         public static bool IsDepthStencilReadOnlySupported(GraphicsDevice device)
         {
-            return device.Features.Profile >= GraphicsProfile.Level_11_0;
+            return device.Features.CurrentProfile >= GraphicsProfile.Level_11_0;
         }
 
         /// <summary>
@@ -129,7 +133,7 @@ namespace SiliconStudio.Xenko.Graphics
             NativeDepthStencilView = GetDepthStencilView(out HasStencil);           
         }
 
-        protected override void DestroyImpl()
+        protected internal override void OnDestroyed()
         {
             // If it was a View, do not release reference
             if (ParentTexture != null)
@@ -144,14 +148,7 @@ namespace SiliconStudio.Xenko.Graphics
             ReleaseComObject(ref renderTargetView);
             ReleaseComObject(ref depthStencilView);
 
-            base.DestroyImpl();
-        }
-
-        /// <inheritdoc/>
-        protected internal override void OnDestroyed()
-        {
             base.OnDestroyed();
-            DestroyImpl();
         }
 
         private void OnRecreateImpl()
@@ -569,14 +566,14 @@ namespace SiliconStudio.Xenko.Graphics
             // If the texture is going to be bound on the depth stencil, for to use TypeLess format
             if (IsDepthStencil)
             {
-                if (IsShaderResource && GraphicsDevice.Features.Profile < GraphicsProfile.Level_10_0)
+                if (IsShaderResource && GraphicsDevice.Features.CurrentProfile < GraphicsProfile.Level_10_0)
                 {
-                    throw new NotSupportedException(String.Format("ShaderResourceView for DepthStencil Textures are not supported for Graphics profile < 10.0 (Current: [{0}])", GraphicsDevice.Features.Profile));
+                    throw new NotSupportedException(String.Format("ShaderResourceView for DepthStencil Textures are not supported for Graphics profile < 10.0 (Current: [{0}])", GraphicsDevice.Features.CurrentProfile));
                 }
                 else
                 {
                     // Determine TypeLess Format and ShaderResourceView Format
-                    if (GraphicsDevice.Features.Profile < GraphicsProfile.Level_10_0)
+                    if (GraphicsDevice.Features.CurrentProfile < GraphicsProfile.Level_10_0)
                     {
                         switch (textureDescription.Format)
                         {
@@ -722,7 +719,7 @@ namespace SiliconStudio.Xenko.Graphics
         /// <returns>The updated texture description.</returns>
         private static TextureDescription CheckMipLevels(GraphicsDevice device, ref TextureDescription description)
         {
-            if (device.Features.Profile < GraphicsProfile.Level_10_0 && (description.Flags & TextureFlags.DepthStencil) == 0 && description.Format.IsCompressed())
+            if (device.Features.CurrentProfile < GraphicsProfile.Level_10_0 && (description.Flags & TextureFlags.DepthStencil) == 0 && description.Format.IsCompressed())
             {
                 description.MipLevels = Math.Min(CalculateMipCount(description.Width, description.Height), description.MipLevels);
             }
@@ -769,7 +766,6 @@ namespace SiliconStudio.Xenko.Graphics
         {
             return Math.Min(CalculateMipCountFromSize(width, minimumSizeLastMip), CalculateMipCountFromSize(height, minimumSizeLastMip));
         }
-
 
         internal static bool IsStencilFormat(PixelFormat format)
         {

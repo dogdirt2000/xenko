@@ -46,6 +46,8 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
             FallbackValue = new ComputeColor(Color4.White);
         }
 
+        public string Swizzle { get; set; }
+
         /// <summary>
         /// Gets or sets the default value used when no texture is set.
         /// </summary>
@@ -60,9 +62,9 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
             return "rgba";
         }
 
-        public override ShaderSource GenerateShaderFromFallbackValue(MaterialGeneratorContext context, MaterialComputeColorKeys baseKeys)
+        public override ShaderSource GenerateShaderFromFallbackValue(ShaderGeneratorContext context, MaterialComputeColorKeys baseKeys)
         {
-            return FallbackValue.GenerateShaderSource(context, baseKeys);
+            return FallbackValue?.GenerateShaderSource(context, baseKeys);
         }
     }
 }

@@ -3,12 +3,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
 using SiliconStudio.Core;
 using SiliconStudio.Core.Extensions;
 using SiliconStudio.Core.Reflection;
 using SiliconStudio.Presentation.Core;
-using SiliconStudio.Presentation.ViewModel.ActionStack;
 using SiliconStudio.Quantum;
 
 namespace SiliconStudio.Presentation.Quantum
@@ -28,8 +26,8 @@ namespace SiliconStudio.Presentation.Quantum
         /// </summary>
         /// <param name="ownerViewModel">The <see cref="ObservableViewModel"/> that owns the new <see cref="SingleObservableNode"/>.</param>
         /// <param name="baseName">The base name of this node. Can be null if <see cref="index"/> is not. If so a name will be automatically generated from the index.</param>
-        /// <param name="index">The index of this content in the model node, when this node represent an item of a collection. <c>null</c> must be passed otherwise</param>
-        protected SingleObservableNode(ObservableViewModel ownerViewModel, string baseName, object index = null)
+        /// <param name="index">The index of this content in the model node, when this node represent an item of a collection. <see cref="Index.Empty"/> must be passed otherwise</param>
+        protected SingleObservableNode(ObservableViewModel ownerViewModel, string baseName, Index index)
             : base(ownerViewModel, index)
         {
             if (baseName == null && index == null)
@@ -58,16 +56,10 @@ namespace SiliconStudio.Presentation.Quantum
                 DisplayName = provider();
         }
 
-        public VirtualObservableNode CreateVirtualChild(string name, Type contentType, int? order, bool isPrimitive, object initialValue, object index = null, NodeCommandWrapperBase valueChangedCommand = null, IReadOnlyDictionary<string, object> nodeAssociatedData = null)
+        public VirtualObservableNode CreateVirtualChild(string name, Type contentType, bool isPrimitive, int? order, Index index, Func<object> getter, Action<object> setter, IReadOnlyDictionary<string, object> nodeAssociatedData = null)
         {
-            var observableChild = VirtualObservableNode.Create(Owner, name, order, isPrimitive, contentType, initialValue, index, valueChangedCommand);
-            if (nodeAssociatedData != null)
-            {
-                foreach (var data in nodeAssociatedData)
-                {
-                    observableChild.AddAssociatedData(data.Key, data.Value);
-                }
-            }
+            var observableChild = (VirtualObservableNode)Activator.CreateInstance(typeof(VirtualObservableNode<>).MakeGenericType(contentType), Owner, name, isPrimitive, order, index, getter, setter);
+            nodeAssociatedData?.ForEach(x => observableChild.AddAssociatedData(x.Key, x.Value));
             observableChild.FinalizeChildrenInitialization();
             AddChild(observableChild);
             return observableChild;
@@ -85,11 +77,6 @@ namespace SiliconStudio.Presentation.Quantum
             }
         }
 
-        protected void RegisterValueChangedAction(string path, ViewModelActionItem actionItem)
-        {
-            Owner.RegisterAction(path, actionItem);
-        }
-
         private void SetName(string nodeName)
         {
             var index = Index;
@@ -100,10 +87,10 @@ namespace SiliconStudio.Presentation.Quantum
                 Name = nodeName;
                 DisplayName = Utils.SplitCamelCase(nodeName);
             }
-            else if (index != null)
+            else if (!index.IsEmpty)
             {
                 // TODO: make a better interface for custom naming specification
-                var propertyKey = index as PropertyKey;
+                var propertyKey = index.Value as PropertyKey;
                 if (propertyKey != null)
                 {
                     string name = propertyKey.Name.Replace(".", "-");
@@ -117,7 +104,7 @@ namespace SiliconStudio.Presentation.Quantum
                 }
                 else
                 {
-                    if (index.GetType().IsNumeric())
+                    if (index.IsInt)
                         Name = "Item " + index.ToString().Replace(".", "-");
                     else
                         Name = index.ToString().Replace(".", "-");

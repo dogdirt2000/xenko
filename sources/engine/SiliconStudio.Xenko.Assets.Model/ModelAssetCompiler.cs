@@ -19,7 +19,7 @@ namespace SiliconStudio.Xenko.Assets.Model
     {
         protected override void Compile(AssetCompilerContext context, string urlInStorage, UFile assetAbsolutePath, ModelAsset asset, AssetCompilerResult result)
         {
-            if (!EnsureSourceExists(result, asset, assetAbsolutePath))
+            if (!EnsureSourcesExist(result, asset, assetAbsolutePath))
                 return;
 
             // Get absolute path of asset source on disk
@@ -27,8 +27,9 @@ namespace SiliconStudio.Xenko.Assets.Model
             var assetSource = UPath.Combine(assetDirectory, asset.Source);
 
             var gameSettingsAsset = context.GetGameSettingsAsset();
-            var allow32BitIndex = gameSettingsAsset.DefaultGraphicsProfile >= GraphicsProfile.Level_9_2;
-            var allowUnsignedBlendIndices = context.GetGraphicsPlatform() != GraphicsPlatform.OpenGLES;
+            var renderingSettings = gameSettingsAsset.Get<RenderingSettings>();
+            var allow32BitIndex = renderingSettings.DefaultGraphicsProfile >= GraphicsProfile.Level_9_2;
+            var allowUnsignedBlendIndices = context.GetGraphicsPlatform(AssetItem.Package) != GraphicsPlatform.OpenGLES;
             var extension = asset.Source.GetFileExtension();
 
             // Find skeleton asset, if any

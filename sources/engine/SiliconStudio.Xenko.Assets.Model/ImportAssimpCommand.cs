@@ -42,7 +42,7 @@ namespace SiliconStudio.Xenko.Assets.Model
             };
         }
 
-        protected override Rendering.Model LoadModel(ICommandContext commandContext, AssetManager assetManager)
+        protected override Rendering.Model LoadModel(ICommandContext commandContext, ContentManager contentManager)
         {
             var converter = CreateMeshConverter(commandContext);
 
@@ -53,14 +53,15 @@ namespace SiliconStudio.Xenko.Assets.Model
             return sceneData;
         }
 
-        protected override Dictionary<string, AnimationClip> LoadAnimation(ICommandContext commandContext, AssetManager assetManager)
+        protected override Dictionary<string, AnimationClip> LoadAnimation(ICommandContext commandContext, ContentManager contentManager, out TimeSpan duration)
         {
             var meshConverter = this.CreateMeshConverter(commandContext);
             var sceneData = meshConverter.ConvertAnimation(SourcePath, Location);
-            return sceneData;
+            duration = sceneData.Duration;
+            return sceneData.AnimationClips;
         }
 
-        protected override Skeleton LoadSkeleton(ICommandContext commandContext, AssetManager assetManager)
+        protected override Skeleton LoadSkeleton(ICommandContext commandContext, ContentManager contentManager)
         {
             var meshConverter = this.CreateMeshConverter(commandContext);
             var sceneData = meshConverter.ConvertSkeleton(SourcePath, Location);

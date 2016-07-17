@@ -464,7 +464,7 @@ namespace SiliconStudio.Core.Mathematics
             Vector3 point1 = ray1.Position + (s * ray1.Direction);
             Vector3 point2 = ray2.Position + (t * ray2.Direction);
 
-            //If the points are not equal, no intersection has occured.
+            //If the points are not equal, no intersection has occurred.
             if (Math.Abs(point2.X - point1.X) > MathUtil.ZeroTolerance ||
                 Math.Abs(point2.Y - point1.Y) > MathUtil.ZeroTolerance ||
                 Math.Abs(point2.Z - point1.Z) > MathUtil.ZeroTolerance)
@@ -1319,9 +1319,9 @@ namespace SiliconStudio.Core.Mathematics
             if (distance > sphere.Radius * sphere.Radius)
                 return ContainmentType.Disjoint;
 
-            if ((((box.Minimum.X + sphere.Radius <= sphere.Center.X) && (sphere.Center.X <= box.Maximum.X - sphere.Radius)) && ((box.Maximum.X - box.Minimum.X > sphere.Radius) &&
-                (box.Minimum.Y + sphere.Radius <= sphere.Center.Y))) && (((sphere.Center.Y <= box.Maximum.Y - sphere.Radius) && (box.Maximum.Y - box.Minimum.Y > sphere.Radius)) &&
-                (((box.Minimum.Z + sphere.Radius <= sphere.Center.Z) && (sphere.Center.Z <= box.Maximum.Z - sphere.Radius)) && (box.Maximum.X - box.Minimum.X > sphere.Radius))))
+            if (((box.Minimum.X + sphere.Radius <= sphere.Center.X) && (sphere.Center.X <= box.Maximum.X - sphere.Radius) && (box.Maximum.X - box.Minimum.X > sphere.Radius)) &&
+               ((box.Minimum.Y + sphere.Radius <= sphere.Center.Y) && (sphere.Center.Y <= box.Maximum.Y - sphere.Radius) && (box.Maximum.Y - box.Minimum.Y > sphere.Radius)) &&
+               ((box.Minimum.Z + sphere.Radius <= sphere.Center.Z) && (sphere.Center.Z <= box.Maximum.Z - sphere.Radius) && (box.Maximum.Z - box.Minimum.Z > sphere.Radius)))
             {
                 return ContainmentType.Contains;
             }

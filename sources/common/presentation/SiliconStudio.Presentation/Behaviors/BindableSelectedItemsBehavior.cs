@@ -6,8 +6,6 @@ using System.Collections.Specialized;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interactivity;
-
 using SiliconStudio.Presentation.Collections;
 
 namespace SiliconStudio.Presentation.Behaviors
@@ -34,33 +32,25 @@ namespace SiliconStudio.Presentation.Behaviors
     /// that contains a selected items collection in the framework.
     /// </summary>
     /// <typeparam name="T">The type of control that is associated with this behavior.</typeparam>
-    public abstract class BindableSelectedItemsBehavior<T> : Behavior<T> where T : Control
+    public abstract class BindableSelectedItemsBehavior<T> : DeferredBehaviorBase<T> where T : Control
     {
         private bool updatingCollection;
         
         /// <summary>
         /// Identifies the <see cref="SelectedItems"/> dependency property.
         /// </summary>
-        public static readonly DependencyProperty SelectedItemsProperty = DependencyProperty.Register("SelectedItems", typeof(ObservableList<object>), typeof(BindableSelectedItemsBehavior<T>), new PropertyMetadata(null, SelectedItemsChanged));
+        public static readonly DependencyProperty SelectedItemsProperty = DependencyProperty.Register(nameof(SelectedItems), typeof(IObservableList<object>), typeof(BindableSelectedItemsBehavior<T>), new PropertyMetadata(null, SelectedItemsChanged));
 
         /// <summary>
         /// Identifies the <see cref="GiveFocusOnSelectionChange"/> dependency property.
         /// </summary>
-        public static readonly DependencyProperty GiveFocusOnSelectionChangeProperty = DependencyProperty.Register("GiveFocusOnSelectionChange", typeof(bool), typeof(BindableSelectedItemsBehavior<T>), new PropertyMetadata(true));
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="BindableSelectedItemsBehavior{T}"/> class.
-        /// </summary>
-        protected BindableSelectedItemsBehavior()
-        {
-            BindableSelectedItemsControl.BindingReactivated += () => CollectionSelectionChanged(SelectedItems, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
-        }
+        public static readonly DependencyProperty GiveFocusOnSelectionChangeProperty = DependencyProperty.Register(nameof(GiveFocusOnSelectionChange), typeof(bool), typeof(BindableSelectedItemsBehavior<T>), new PropertyMetadata(true));
 
         /// <summary>
         /// Gets or sets the view model collection that should be bound to the selected item collection of the control.
         /// </summary>
         /// <remarks>The view model collection must be an instance of the <see cref="ObservableList{Object}"/> class.</remarks>
-        public ObservableList<object> SelectedItems { get { return (ObservableList<object>)GetValue(SelectedItemsProperty); } set { SetValue(SelectedItemsProperty, value); } }
+        public IObservableList<object> SelectedItems { get { return (IObservableList<object>)GetValue(SelectedItemsProperty); } set { SetValue(SelectedItemsProperty, value); } }
 
         /// <summary>
         /// Gets or sets whether changes in the selected item collection of the view model should give the focus to the control. The focus is not given if the selection is cleared.
@@ -96,6 +86,18 @@ namespace SiliconStudio.Presentation.Behaviors
             base.OnAttached();
         }
 
+        protected override void OnAttachedAndLoaded()
+        {
+            BindableSelectedItemsControl.BindingReactivated += OnBindableSelectedItemsControlOnBindingReactivated;
+            base.OnAttachedAndLoaded();
+        }
+
+        protected override void OnDetachingAndUnloaded()
+        {
+            base.OnDetachingAndUnloaded();
+            BindableSelectedItemsControl.BindingReactivated -= OnBindableSelectedItemsControlOnBindingReactivated;
+        }
+
         /// <summary>
         /// Scrolls the items control to make the given item visible. This method should be overriden in implementations of this behavior.
         /// </summary>
@@ -122,7 +124,7 @@ namespace SiliconStudio.Presentation.Behaviors
                 if (removedItems != null)
                 {
                     // Optimize removal if most of the selected items are removed
-                    if (removedItems.Count > SelectedItems.Count / 2)
+                    if (removedItems.Count > 2 && removedItems.Count > SelectedItems.Count / 2)
                     {
                         var remainingItems = SelectedItems.Where(x => !removedItems.Contains(x)).ToList();
                         SelectedItems.Clear();
@@ -184,13 +186,13 @@ namespace SiliconStudio.Presentation.Behaviors
 
             if (e.OldValue != null)
             {
-                var oldList = (ObservableList<object>)e.OldValue;
+                var oldList = (IObservableList<object>)e.OldValue;
                 oldList.CollectionChanged -= behavior.CollectionSelectionChanged;
             }
 
             if (e.NewValue != null)
             {
-                var newList = (ObservableList<object>)e.NewValue;
+                var newList = (IObservableList<object>)e.NewValue;
                 newList.CollectionChanged += behavior.CollectionSelectionChanged;
                 if (behavior.AssociatedObject != null)
                 {
@@ -221,6 +223,9 @@ namespace SiliconStudio.Presentation.Behaviors
                 return;
 
             if (updatingCollection)
+                return;
+
+            if (SelectedItems == null)
                 return;
 
             if (AssociatedObject != null)
@@ -261,6 +266,11 @@ namespace SiliconStudio.Presentation.Behaviors
                     AssociatedObject.Focus();
                 }
             }
+        }
+
+        private void OnBindableSelectedItemsControlOnBindingReactivated()
+        {
+            CollectionSelectionChanged(SelectedItems, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
     }
 }

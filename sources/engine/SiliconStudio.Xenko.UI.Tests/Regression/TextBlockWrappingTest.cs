@@ -8,6 +8,7 @@ using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Xenko.Input;
+using SiliconStudio.Xenko.Rendering.Sprites;
 using SiliconStudio.Xenko.UI.Controls;
 
 namespace SiliconStudio.Xenko.UI.Tests.Regression
@@ -21,21 +22,21 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
 
         public TextBlockWrappingTest()
         {
-            CurrentVersion = 6;
+            CurrentVersion = 7; // Font type, names & sizes changed slightly
         }
 
         protected override async Task LoadContent()
         {
             await base.LoadContent();
 
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height, 500);
             
             textBlock = new TextBlock
             {
                 WrapText = true,
                 TextSize = 15,
                 TextColor = Color.Black,
-                Font = Asset.Load<SpriteFont>("MSMincho10"),
+                Font = Content.Load<SpriteFont>("HanSans13"),
                 Text = @"This is a very long sentence that will hopefully be wrapped up. 
 Does it work with kanjis too? let's see that in the following line. Here we goes.
 漢字も大丈夫そうですね！良かった！でも、文章の切る所は本当に合ってますか？どうかな。。
@@ -48,7 +49,7 @@ Does it work with kanjis too? let's see that in the following line. Here we goes
                 Content = textBlock, 
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                BackgroundImage = new Sprite(Asset.Load<Texture>("DumbWhite"))
+                BackgroundImage = (SpriteFromTexture)new Sprite(Content.Load<Texture>("DumbWhite"))
             };
 
             UIComponent.RootElement = decorator;

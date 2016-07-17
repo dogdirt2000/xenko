@@ -20,6 +20,8 @@ namespace SiliconStudio.Xenko.Graphics
     /// </summary>
     internal struct UseOpenGLCreationContext : IDisposable
     {
+        public readonly CommandList CommandList;
+
         private readonly bool useDeviceCreationContext;
         private readonly bool needUnbindContext;
 
@@ -29,27 +31,15 @@ namespace SiliconStudio.Xenko.Graphics
         private readonly IGraphicsContext deviceCreationContext;
 
 #if SILICONSTUDIO_PLATFORM_ANDROID
-        private readonly IGraphicsContext androidDeviceCreationContext;
-        private bool tegraWorkaround;
+        private readonly bool tegraWorkaround;
 #endif
 
-        public bool UseDeviceCreationContext
-        {
-            get { return useDeviceCreationContext; }
-        }
+        public bool UseDeviceCreationContext => useDeviceCreationContext;
 
         public UseOpenGLCreationContext(GraphicsDevice graphicsDevice)
             : this()
         {
-#if SILICONSTUDIO_PLATFORM_ANDROID
-            // Unfortunately, android seems to not use GraphicsContext.CurrentContext to register its AndroidGraphicsContext,
-            // so let's query EGL directly.
-            if (GraphicsDevice.EglGetCurrentContext() == IntPtr.Zero)
-#elif SILICONSTUDIO_PLATFORM_IOS
-            if (OpenGLES.EAGLContext.CurrentContext == null)
-#else
-            if (GraphicsContext.CurrentContext == null)
-#endif
+            if (OpenTK.Graphics.GraphicsContext.CurrentContextHandle.Handle == IntPtr.Zero)
             {
                 needUnbindContext = true;
                 useDeviceCreationContext = true;
@@ -73,17 +63,16 @@ namespace SiliconStudio.Xenko.Graphics
 #if SILICONSTUDIO_PLATFORM_ANDROID
                 if (tegraWorkaround)
                     graphicsDevice.AsyncPendingTaskWaiting = false;
-
-                // On android, bind the actual android context
-                // The deviceCreationContext is a dummy one, so that CurrentContext works.
-                androidDeviceCreationContext = graphicsDevice.androidAsyncDeviceCreationContext;
-                if (androidDeviceCreationContext != null)
-                    androidDeviceCreationContext.MakeCurrent(graphicsDevice.deviceCreationWindowInfo);
 #endif
 
                 // Bind the context
                 deviceCreationContext = graphicsDevice.deviceCreationContext;
                 deviceCreationContext.MakeCurrent(graphicsDevice.deviceCreationWindowInfo);
+            }
+            else
+            {
+                // TODO Hardcoded to the fact it uses only one command list, this should be fixed
+                CommandList = graphicsDevice.MainCommandList;
             }
         }
 
@@ -94,14 +83,6 @@ namespace SiliconStudio.Xenko.Graphics
                 if (needUnbindContext)
                 {
                     GL.Flush();
-
-#if SILICONSTUDIO_PLATFORM_ANDROID
-                    // On Android, the graphics context was just dummy so unbind the actual one.
-                    // Best would be integration within OpenTK but since everything is internal and closed source,
-                    // couldn't find a way around that
-                    if (androidDeviceCreationContext != null)
-                        androidDeviceCreationContext.MakeCurrent(null);
-#endif
 
                     // Restore graphics context
                     GraphicsDevice.UnbindGraphicsContext(deviceCreationContext);

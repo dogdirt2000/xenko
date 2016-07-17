@@ -8,6 +8,7 @@ using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Xenko.Input;
+using SiliconStudio.Xenko.Rendering.Sprites;
 using SiliconStudio.Xenko.UI.Controls;
 
 namespace SiliconStudio.Xenko.UI.Tests.Regression
@@ -22,7 +23,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
 
         public DynamicFontTest()
         {
-            CurrentVersion = 4;
+            CurrentVersion = 6; // Font type, names & sizes changed slightly
         }
 
         protected override async Task LoadContent()
@@ -31,7 +32,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
 
             textBlock = new TextBlock
                 {
-                    Font = Asset.Load<SpriteFont>("MSMincho10"), 
+                    Font = Content.Load<SpriteFont>("HanSans13"), 
                     Text = "Simple Text - 簡単な文章。", 
                     TextColor = Color.Black,
                     HorizontalAlignment = HorizontalAlignment.Center,
@@ -43,7 +44,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
             {
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                BackgroundImage = new Sprite(Asset.Load<Texture>("DumbWhite")),
+                BackgroundImage = (SpriteFromTexture)new Sprite(Content.Load<Texture>("DumbWhite")),
                 Content = textBlock
             };
 
@@ -59,19 +60,19 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
 
             // change the size of the virtual resolution
             if (Input.IsKeyReleased(Keys.NumPad0))
-                UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width / 2f, GraphicsDevice.BackBuffer.Height / 2f, 400);
+                UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width / 2f, GraphicsDevice.Presenter.BackBuffer.Height / 2f, 400);
             if (Input.IsKeyReleased(Keys.NumPad1))
-                UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height, 400);
+                UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height, 400);
             if (Input.IsKeyReleased(Keys.NumPad2))
-                UIComponent.VirtualResolution = new Vector3(2 * GraphicsDevice.BackBuffer.Width, 2 * GraphicsDevice.BackBuffer.Height, 400);
+                UIComponent.Resolution = new Vector3(2 * GraphicsDevice.Presenter.BackBuffer.Width, 2 * GraphicsDevice.Presenter.BackBuffer.Height, 400);
             if (Input.IsKeyReleased(Keys.Right))
-                UIComponent.VirtualResolution = new Vector3((ChangeFactor * UIComponent.VirtualResolution.X), UIComponent.VirtualResolution.Y, UIComponent.VirtualResolution.Z);
+                UIComponent.Resolution = new Vector3((ChangeFactor * UIComponent.Resolution.X), UIComponent.Resolution.Y, UIComponent.Resolution.Z);
             if (Input.IsKeyReleased(Keys.Left))
-                UIComponent.VirtualResolution = new Vector3((ChangeFactorInverse * UIComponent.VirtualResolution.X), UIComponent.VirtualResolution.Y, UIComponent.VirtualResolution.Z);
+                UIComponent.Resolution = new Vector3((ChangeFactorInverse * UIComponent.Resolution.X), UIComponent.Resolution.Y, UIComponent.Resolution.Z);
             if (Input.IsKeyReleased(Keys.Up))
-                UIComponent.VirtualResolution = new Vector3(UIComponent.VirtualResolution.X, (ChangeFactor * UIComponent.VirtualResolution.Y), UIComponent.VirtualResolution.Z);
+                UIComponent.Resolution = new Vector3(UIComponent.Resolution.X, (ChangeFactor * UIComponent.Resolution.Y), UIComponent.Resolution.Z);
             if (Input.IsKeyReleased(Keys.Down))
-                UIComponent.VirtualResolution = new Vector3(UIComponent.VirtualResolution.X, (ChangeFactorInverse * UIComponent.VirtualResolution.Y), UIComponent.VirtualResolution.Z);
+                UIComponent.Resolution = new Vector3(UIComponent.Resolution.X, (ChangeFactorInverse * UIComponent.Resolution.Y), UIComponent.Resolution.Z);
 
             if (Input.IsKeyReleased(Keys.D1))
                 decorator.LocalMatrix = Matrix.Scaling(1);
@@ -97,42 +98,42 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
         {
             decorator.LocalMatrix = Matrix.Scaling(1);
             textBlock.TextSize = textBlock.Font.Size;
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height, 500);
         }
 
         public void DrawTest1()
         {
             decorator.LocalMatrix = Matrix.Scaling(1);
             textBlock.TextSize = 2*textBlock.Font.Size;
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height, 500);
         }
 
         public void DrawTest2()
         {
             decorator.LocalMatrix = Matrix.Scaling(1);
             textBlock.TextSize = textBlock.Font.Size;
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width / 2f, GraphicsDevice.BackBuffer.Height / 2f, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width / 2f, GraphicsDevice.Presenter.BackBuffer.Height / 2f, 500);
         }
 
         public void DrawTest3()
         {
             decorator.LocalMatrix = Matrix.Scaling(2);
             textBlock.TextSize = textBlock.Font.Size;
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height, 500);
         }
 
         public void DrawTest4()
         {
             decorator.LocalMatrix = Matrix.Scaling(1);
             textBlock.TextSize = textBlock.Font.Size;
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width / 2f, GraphicsDevice.BackBuffer.Height, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width / 2f, GraphicsDevice.Presenter.BackBuffer.Height, 500);
         }
 
         public void DrawTest5()
         {
             decorator.LocalMatrix = Matrix.Scaling(1);
             textBlock.TextSize = textBlock.Font.Size;
-            UIComponent.VirtualResolution = new Vector3(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height / 2f, 500);
+            UIComponent.Resolution = new Vector3(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height / 2f, 500);
         }
 
         [Test]

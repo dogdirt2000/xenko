@@ -1,12 +1,12 @@
 ﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
+
 using System;
 using System.Linq;
-
-using SiliconStudio.ActionStack;
 using SiliconStudio.Core.Annotations;
 using SiliconStudio.Core.Reflection;
 using SiliconStudio.Core.Serialization.Contents;
+using SiliconStudio.Quantum.Contents;
 
 namespace SiliconStudio.Quantum.Commands
 {
@@ -16,13 +16,15 @@ namespace SiliconStudio.Quantum.Commands
     /// or an exception will be thrown if T could not be determinated or has no parameterless constructor.
     /// </summary>
     /// <remarks>No parameter is required when invoking this command.</remarks>
-    public class AddNewItemCommand : NodeCommand
+    public class AddNewItemCommand : SyncNodeCommandBase
     {
-        /// <inheritdoc/>
-        public override string Name { get { return "AddNewItem"; } }
+        public const string CommandName = "AddNewItem";
 
         /// <inheritdoc/>
-        public override CombineMode CombineMode { get { return CombineMode.DoNotCombine; } }
+        public override string Name => CommandName;
+
+        /// <inheritdoc/>
+        public override CombineMode CombineMode => CombineMode.DoNotCombine;
 
         /// <inheritdoc/>
         public override bool CanAttach(ITypeDescriptor typeDescriptor, MemberDescriptorBase memberDescriptor)
@@ -39,44 +41,43 @@ namespace SiliconStudio.Quantum.Commands
                 return false;
 
             var elementType = collectionDescriptor.ElementType;
-            return collectionDescriptor.HasAdd && (!elementType.IsClass || elementType.GetConstructor(Type.EmptyTypes) != null || elementType.IsAbstract || elementType.IsNullable() || elementType == typeof(string));
+            return collectionDescriptor.HasAdd && (!elementType.IsClass || elementType.GetConstructor(Type.EmptyTypes) != null || elementType.IsAbstract || elementType.IsNullable() || elementType.GetCustomAttributes(typeof(ContentSerializerAttribute), true).Any() || elementType == typeof(string));
         }
 
-        /// <inheritdoc/>
-        public override object Invoke(object currentValue, object parameter, out UndoToken undoToken)
+        protected override void ExecuteSync(IContent content, Index index, object parameter)
         {
-            var collectionDescriptor = (CollectionDescriptor)TypeDescriptorFactory.Default.Find(currentValue.GetType());
+            var value = content.Retrieve(index);
+            var collectionDescriptor = (CollectionDescriptor)TypeDescriptorFactory.Default.Find(value.GetType());
+
+            object itemToAdd = null;
             // TODO: Find a better solution for ContentSerializerAttribute that doesn't require to reference Core.Serialization (and unreference this assembly)
+            // TODO: Fix this for asset part types that are also references
             if (collectionDescriptor.ElementType.IsAbstract || collectionDescriptor.ElementType.IsNullable() || collectionDescriptor.ElementType.GetCustomAttributes(typeof(ContentSerializerAttribute), true).Any())
             {
                 // If the parameter is a type instead of an instance, try to construct an instance of this type
                 var type = parameter as Type;
-                if (type != null && type.GetConstructor(Type.EmptyTypes) != null)
-                    parameter = Activator.CreateInstance(type);
-                undoToken = new UndoToken(true, collectionDescriptor.GetCollectionCount(currentValue));
-                collectionDescriptor.Add(currentValue, parameter);
+                if (type?.GetConstructor(Type.EmptyTypes) != null)
+                    itemToAdd = Activator.CreateInstance(type);
             }
             else if (collectionDescriptor.ElementType == typeof(string))
             {
-                undoToken = new UndoToken(true, collectionDescriptor.GetCollectionCount(currentValue));
-                collectionDescriptor.Add(currentValue, parameter ?? "");
+                itemToAdd = parameter ?? "";
             }
             else
             {
-                var newItem = ObjectFactory.NewInstance(collectionDescriptor.ElementType);
-                undoToken = new UndoToken(true, collectionDescriptor.GetCollectionCount(currentValue));
-                collectionDescriptor.Add(currentValue, parameter ?? newItem);
+                itemToAdd = parameter ?? ObjectFactory.NewInstance(collectionDescriptor.ElementType);
             }
-            return currentValue;
-        }
-
-        /// <inheritdoc/>
-        public override object Undo(object currentValue, UndoToken undoToken)
-        {
-            var index = (int)undoToken.TokenValue;
-            var collectionDescriptor = (CollectionDescriptor)TypeDescriptorFactory.Default.Find(currentValue.GetType());
-            collectionDescriptor.RemoveAt(currentValue, index);
-            return currentValue;
+            if (index.IsEmpty)
+            {
+                content.Add(itemToAdd);
+            }
+            else
+            {
+                // Handle collections in collections
+                // TODO: this is not working on the observable node side
+                var collectionNode = content.Reference.AsEnumerable[index].TargetNode;
+                collectionNode.Content.Add(itemToAdd);
+            }
         }
     }
 }

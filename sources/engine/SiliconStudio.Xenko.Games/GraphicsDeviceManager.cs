@@ -23,6 +23,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SiliconStudio.Core.Diagnostics;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Core;
@@ -54,7 +55,7 @@ namespace SiliconStudio.Xenko.Games
 
         private bool isFullScreen;
 
-        private bool preferMultiSampling;
+        private MSAALevel preferredMultiSampleLevel;
 
         private PixelFormat preferredBackBufferFormat;
 
@@ -117,7 +118,7 @@ namespace SiliconStudio.Xenko.Games
             preferredBackBufferWidth = DefaultBackBufferWidth;
             preferredBackBufferHeight = DefaultBackBufferHeight;
             preferredRefreshRate = new Rational(60, 1);
-            PreferMultiSampling = false;
+            PreferredMultiSampleLevel = MSAALevel.None;
             PreferredGraphicsProfile = new[]
                 {
 #if SILICONSTUDIO_PLATFORM_WINDOWS_PHONE
@@ -150,6 +151,7 @@ namespace SiliconStudio.Xenko.Games
         {
             game.Window.ClientSizeChanged += Window_ClientSizeChanged;
             game.Window.OrientationChanged += Window_OrientationChanged;
+            game.Window.FullscreenToggle += WindowOnFullscreenToggle;
         }
 
         #endregion
@@ -202,6 +204,11 @@ namespace SiliconStudio.Xenko.Games
         public DeviceCreationFlags DeviceCreationFlags { get; set; }
 
         /// <summary>
+        /// If populated the engine will try to initialize the device with the same unique id
+        /// </summary>
+        public string RequiredAdapterUid { get; set; }
+
+        /// <summary>
         /// Gets or sets the default color space.
         /// </summary>
         /// <value>The default color space.</value>
@@ -244,11 +251,10 @@ namespace SiliconStudio.Xenko.Games
 
             set
             {
-                if (isFullScreen != value)
-                {
-                    isFullScreen = value;
-                    deviceSettingsChanged = true;
-                }
+                if (isFullScreen == value) return;
+
+                isFullScreen = value;
+                deviceSettingsChanged = true;
             }
         }
 
@@ -256,18 +262,18 @@ namespace SiliconStudio.Xenko.Games
         /// Gets or sets a value indicating whether [prefer multi sampling].
         /// </summary>
         /// <value><c>true</c> if [prefer multi sampling]; otherwise, <c>false</c>.</value>
-        public bool PreferMultiSampling
+        public MSAALevel PreferredMultiSampleLevel
         {
             get
             {
-                return preferMultiSampling;
+                return preferredMultiSampleLevel;
             }
 
             set
             {
-                if (preferMultiSampling != value)
+                if (preferredMultiSampleLevel != value)
                 {
-                    preferMultiSampling = value;
+                    preferredMultiSampleLevel = value;
                     deviceSettingsChanged = true;
                 }
             }
@@ -470,15 +476,16 @@ namespace SiliconStudio.Xenko.Games
 
             GraphicsDevice.Begin();
 
-            // Before drawing, we should clear the state to make sure that there is no unstable graphics device states (On some WP8 devices for example)
-            // An application should not rely on previous state (last frame...etc.) after BeginDraw.
-            GraphicsDevice.ClearState();
-
-            // By default, we setup the render target to the back buffer, and the viewport as well.
-            if (GraphicsDevice.BackBuffer != null)
-            {
-                GraphicsDevice.SetDepthAndRenderTarget(GraphicsDevice.DepthStencilBuffer, GraphicsDevice.BackBuffer);
-            }
+            // TODO GRAPHICS REFACTOR
+            //// Before drawing, we should clear the state to make sure that there is no unstable graphics device states (On some WP8 devices for example)
+            //// An application should not rely on previous state (last frame...etc.) after BeginDraw.
+            //GraphicsDevice.ClearState();
+            //
+            //// By default, we setup the render target to the back buffer, and the viewport as well.
+            //if (GraphicsDevice.BackBuffer != null)
+            //{
+            //    GraphicsDevice.SetDepthAndRenderTarget(GraphicsDevice.DepthStencilBuffer, GraphicsDevice.BackBuffer);
+            //}
 
             beginDrawOk = true;
             return beginDrawOk;
@@ -537,6 +544,11 @@ namespace SiliconStudio.Xenko.Games
                         GraphicsDevice.End();
                     }
                 }
+                else
+                {
+                    beginDrawOk = false;
+                    GraphicsDevice.End();
+                }
             }
         }
 
@@ -594,7 +606,12 @@ namespace SiliconStudio.Xenko.Games
                     GraphicsDevice.Presenter = null;
                 }
 
+                //GraphicsDevice.DeviceResetting -= GraphicsDevice_DeviceResetting;
+                //GraphicsDevice.DeviceReset -= GraphicsDevice_DeviceReset;
+                //GraphicsDevice.DeviceLost -= GraphicsDevice_DeviceLost;
+
                 GraphicsDevice.Dispose();
+                GraphicsDevice.Disposing -= GraphicsDevice_Disposing;
                 GraphicsDevice = null;
             }
 
@@ -609,7 +626,7 @@ namespace SiliconStudio.Xenko.Games
         protected virtual bool CanResetDevice(GraphicsDeviceInformation newDeviceInfo)
         {
             // By default, a reset is compatible when we stay under the same graphics profile.
-            return GraphicsDevice.Features.Profile == newDeviceInfo.GraphicsProfile;
+            return GraphicsDevice.Features.RequestedProfile == newDeviceInfo.GraphicsProfile;
         }
 
         /// <summary>
@@ -629,10 +646,11 @@ namespace SiliconStudio.Xenko.Games
                     PreferredRefreshRate =  PreferredRefreshRate,
                     PreferredFullScreenOutputIndex = PreferredFullScreenOutputIndex,
                     IsFullScreen = IsFullScreen,
-                    PreferMultiSampling = PreferMultiSampling,
+                    PreferredMultiSampleLevel = PreferredMultiSampleLevel,
                     SynchronizeWithVerticalRetrace = SynchronizeWithVerticalRetrace,
                     PreferredGraphicsProfile = (GraphicsProfile[])PreferredGraphicsProfile.Clone(),
-                    ColorSpace = PreferredColorSpace
+                    ColorSpace = PreferredColorSpace,
+                    RequiredAdapterUid = RequiredAdapterUid
             };
 
             // Remap to Srgb backbuffer if necessary
@@ -671,7 +689,7 @@ namespace SiliconStudio.Xenko.Games
             GraphicsProfile availableGraphicsProfile;
             if (!IsPreferredProfileAvailable(preferredParameters.PreferredGraphicsProfile, out availableGraphicsProfile))
             {
-                throw new InvalidOperationException(string.Format("Graphics profiles [{0}] are not supported by the device. The highest available profile is [{1}].", string.Join(", ", preferredParameters.PreferredGraphicsProfile), availableGraphicsProfile));
+                throw new InvalidOperationException($"Graphics profiles [{string.Join(", ", preferredParameters.PreferredGraphicsProfile)}] are not supported by the device. The highest available profile is [{availableGraphicsProfile}].");
             }
 
             var devices = graphicsDeviceFactory.FindBestDevices(preferredParameters);
@@ -731,9 +749,9 @@ namespace SiliconStudio.Xenko.Games
                         }
 
                         // Sort by MultiSampleCount
-                        if (leftParams.MultiSampleCount != rightParams.MultiSampleCount)
+                        if (leftParams.MultiSampleLevel != rightParams.MultiSampleLevel)
                         {
-                            return leftParams.MultiSampleCount <= rightParams.MultiSampleCount ? 1 : -1;
+                            return leftParams.MultiSampleLevel <= rightParams.MultiSampleLevel ? 1 : -1;
                         }
 
                         // Sort by AspectRatio
@@ -922,21 +940,30 @@ namespace SiliconStudio.Xenko.Games
         {
             if ((!isChangingDevice && ((game.Window.ClientBounds.Height != 0) || (game.Window.ClientBounds.Width != 0))) && (game.Window.CurrentOrientation != currentWindowOrientation))
             {
-                if (GraphicsDevice != null)
+                if ((game.Window.ClientBounds.Height > game.Window.ClientBounds.Width && preferredBackBufferWidth > preferredBackBufferHeight) ||
+                    (game.Window.ClientBounds.Width > game.Window.ClientBounds.Height && preferredBackBufferHeight > preferredBackBufferWidth))
                 {
-                    ChangeOrCreateDevice(false);
+                    //Client size and Back Buffer size are different things
+                    //in this case all we care is if orientation changed, if so we swap width and height
+                    var w = PreferredBackBufferWidth;
+                    PreferredBackBufferWidth = PreferredBackBufferHeight;
+                    PreferredBackBufferHeight = w;
+                    ApplyChanges();
                 }
             }
         }
 
+        private void WindowOnFullscreenToggle(object sender, EventArgs eventArgs)
+        {
+            IsFullScreen = !IsFullScreen;
+            ApplyChanges();
+        }
 
         private void CreateDevice(GraphicsDeviceInformation newInfo)
         {
             newInfo.PresentationParameters.IsFullScreen = isFullScreen;
             newInfo.PresentationParameters.PresentationInterval = SynchronizeWithVerticalRetrace ? PresentInterval.One : PresentInterval.Immediate;
             newInfo.DeviceCreationFlags = DeviceCreationFlags;
-
-            OnPreparingDeviceSettings(this, new PreparingDeviceSettingsEventArgs(newInfo));
 
             // this.ValidateGraphicsDeviceInformation(newInfo);
 
@@ -953,6 +980,8 @@ namespace SiliconStudio.Xenko.Games
             if (deviceRecreate)
                 OnDeviceReset(this, EventArgs.Empty);
 
+
+            // Use the shader profile returned by the GraphicsDeviceInformation otherwise use the one coming from the GameSettings
             GraphicsDevice.ShaderProfile = ShaderProfile;
 
             // TODO HANDLE Device Resetting/Reset/Lost
@@ -989,88 +1018,112 @@ namespace SiliconStudio.Xenko.Games
         {
             // We make sure that we won't be call by an asynchronous event (windows resized)
             lock (lockDeviceCreation)
-            using (var profile = Profiler.Begin(GraphicsDeviceManagerProfilingKeys.CreateDevice))
             {
-                isChangingDevice = true;
-                int width = game.Window.ClientBounds.Width;
-                int height = game.Window.ClientBounds.Height;
-
-                bool isBeginScreenDeviceChange = false;
-                try
+                using (Profiler.Begin(GraphicsDeviceManagerProfilingKeys.CreateDevice))
                 {
-                    // Notifies the game window for the new orientation
-                    game.Window.SetSupportedOrientations(SelectOrientation(supportedOrientations, PreferredBackBufferWidth, PreferredBackBufferHeight, true));
+                    game.ConfirmRenderingSettings(GraphicsDevice == null); //if Device is null we assume we are still at game creation phase
 
-                    var graphicsDeviceInformation = FindBestDevice(forceCreate);
-                    game.Window.BeginScreenDeviceChange(graphicsDeviceInformation.PresentationParameters.IsFullScreen);
-                    isBeginScreenDeviceChange = true;
-                    bool needToCreateNewDevice = true;
+                    isChangingDevice = true;
+                    var width = game.Window.ClientBounds.Width;
+                    var height = game.Window.ClientBounds.Height;
 
-                    // If we are not forced to create a new device and this is already an existing GraphicsDevice
-                    // try to reset and resize it.
-                    if (!forceCreate && GraphicsDevice != null)
+                    //If the orientation is free to be changed from portrait to landscape we actually need this check now, 
+                    //it is mostly useful only at initialization actually tho because Window_OrientationChanged does the same logic on runtime change
+                    if (game.Window.CurrentOrientation != currentWindowOrientation)
                     {
-                        OnPreparingDeviceSettings(this, new PreparingDeviceSettingsEventArgs(graphicsDeviceInformation));
-                        if (CanResetDevice(graphicsDeviceInformation))
+                        if ((game.Window.ClientBounds.Height > game.Window.ClientBounds.Width && preferredBackBufferWidth > preferredBackBufferHeight) ||
+                            (game.Window.ClientBounds.Width > game.Window.ClientBounds.Height && preferredBackBufferHeight > preferredBackBufferWidth))
                         {
-                            try
-                            {
-                                var newWidth = graphicsDeviceInformation.PresentationParameters.BackBufferWidth;
-                                var newHeight = graphicsDeviceInformation.PresentationParameters.BackBufferHeight;
-                                var newFormat = graphicsDeviceInformation.PresentationParameters.BackBufferFormat;
-                                var newOutputIndex = graphicsDeviceInformation.PresentationParameters.PreferredFullScreenOutputIndex;
-
-                                GraphicsDevice.Presenter.Description.PreferredFullScreenOutputIndex = newOutputIndex;
-                                GraphicsDevice.Presenter.Description.RefreshRate = graphicsDeviceInformation.PresentationParameters.RefreshRate;
-                                GraphicsDevice.Presenter.Resize(newWidth, newHeight, newFormat);
-
-                                // Change full screen if needed
-                                GraphicsDevice.Presenter.IsFullScreen = graphicsDeviceInformation.PresentationParameters.IsFullScreen;
-
-                                needToCreateNewDevice = false;
-                            }
-                            catch
-                            {
-                            }
+                            //Client size and Back Buffer size are different things
+                            //in this case all we care is if orientation changed, if so we swap width and height
+                            var w = preferredBackBufferWidth;
+                            preferredBackBufferWidth = preferredBackBufferHeight;
+                            preferredBackBufferHeight = w;
                         }
                     }
 
-                    // If we still need to create a device, then we need to create it
-                    if (needToCreateNewDevice)
+                    var isBeginScreenDeviceChange = false;
+                    try
                     {
-                        CreateDevice(graphicsDeviceInformation);
-                    }
+                        // Notifies the game window for the new orientation
+                        var orientation = SelectOrientation(supportedOrientations, PreferredBackBufferWidth, PreferredBackBufferHeight, true);
+                        game.Window.SetSupportedOrientations(orientation);
 
-                    if (GraphicsDevice == null)
+                        var graphicsDeviceInformation = FindBestDevice(forceCreate);
+
+                        OnPreparingDeviceSettings(this, new PreparingDeviceSettingsEventArgs(graphicsDeviceInformation));
+
+                        isFullScreen = graphicsDeviceInformation.PresentationParameters.IsFullScreen;
+                        game.Window.BeginScreenDeviceChange(graphicsDeviceInformation.PresentationParameters.IsFullScreen);
+                        isBeginScreenDeviceChange = true;
+                        bool needToCreateNewDevice = true;
+
+                        // If we are not forced to create a new device and this is already an existing GraphicsDevice
+                        // try to reset and resize it.
+                        if (!forceCreate && GraphicsDevice != null)
+                        {
+                            if (CanResetDevice(graphicsDeviceInformation))
+                            {
+                                try
+                                {
+                                    var newWidth = graphicsDeviceInformation.PresentationParameters.BackBufferWidth;
+                                    var newHeight = graphicsDeviceInformation.PresentationParameters.BackBufferHeight;
+                                    var newFormat = graphicsDeviceInformation.PresentationParameters.BackBufferFormat;
+                                    var newOutputIndex = graphicsDeviceInformation.PresentationParameters.PreferredFullScreenOutputIndex;
+
+                                    GraphicsDevice.Presenter.Description.PreferredFullScreenOutputIndex = newOutputIndex;
+                                    GraphicsDevice.Presenter.Description.RefreshRate = graphicsDeviceInformation.PresentationParameters.RefreshRate;
+                                    GraphicsDevice.Presenter.Resize(newWidth, newHeight, newFormat);
+
+                                    // Change full screen if needed
+                                    GraphicsDevice.Presenter.IsFullScreen = graphicsDeviceInformation.PresentationParameters.IsFullScreen;
+
+                                    needToCreateNewDevice = false;
+                                }
+                                catch
+                                {
+                                    // ignored
+                                }
+                            }
+                        }
+
+                        // If we still need to create a device, then we need to create it
+                        if (needToCreateNewDevice)
+                        {
+                            CreateDevice(graphicsDeviceInformation);
+                        }
+
+                        if (GraphicsDevice == null)
+                        {
+                            throw new InvalidOperationException("Unexpected null GraphicsDevice");
+                        }
+
+                        // Make sure to copy back coolor space to GraphicsDevice
+                        GraphicsDevice.ColorSpace = graphicsDeviceInformation.PresentationParameters.ColorSpace;
+
+                        var presentationParameters = GraphicsDevice.Presenter.Description;
+                        isReallyFullScreen = presentationParameters.IsFullScreen;
+                        if (presentationParameters.BackBufferWidth != 0)
+                        {
+                            width = presentationParameters.BackBufferWidth;
+                        }
+
+                        if (presentationParameters.BackBufferHeight != 0)
+                        {
+                            height = presentationParameters.BackBufferHeight;
+                        }
+                        deviceSettingsChanged = false;
+                    }
+                    finally
                     {
-                        throw new InvalidOperationException("Unexpected null GraphicsDevice");
-                    }
+                        if (isBeginScreenDeviceChange)
+                        {
+                            game.Window.EndScreenDeviceChange(width, height);
+                        }
 
-                    // Make sure to copy back coolor space to GraphicsDevice
-                    GraphicsDevice.ColorSpace = graphicsDeviceInformation.PresentationParameters.ColorSpace;
-
-                    var presentationParameters = GraphicsDevice.Presenter.Description;
-                    isReallyFullScreen = presentationParameters.IsFullScreen;
-                    if (presentationParameters.BackBufferWidth != 0)
-                    {
-                        width = presentationParameters.BackBufferWidth;
+                        currentWindowOrientation = game.Window.CurrentOrientation;
+                        isChangingDevice = false;
                     }
-
-                    if (presentationParameters.BackBufferHeight != 0)
-                    {
-                        height = presentationParameters.BackBufferHeight;
-                    }
-                    deviceSettingsChanged = false;
-                }
-                finally
-                {
-                    if (isBeginScreenDeviceChange)
-                    {
-                        game.Window.EndScreenDeviceChange(width, height);
-                    }
-
-                    currentWindowOrientation = game.Window.CurrentOrientation;
-                    isChangingDevice = false;
                 }
             }
         }

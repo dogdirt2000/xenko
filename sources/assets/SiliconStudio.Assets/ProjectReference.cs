@@ -12,7 +12,7 @@ namespace SiliconStudio.Assets
     /// </summary>
     [DataContract("ProjectReference")]
     [DebuggerDisplay("Id: {Id}, Location: {Location}")]
-    public sealed class ProjectReference : IEquatable<ProjectReference>
+    public sealed class ProjectReference : IEquatable<ProjectReference>, IIdentifiable
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="ProjectReference"/> class.
@@ -54,6 +54,12 @@ namespace SiliconStudio.Assets
         /// <value>The type.</value>
         [DataMember(30)]
         public ProjectType Type { get; set; }
+
+        /// <summary>
+        /// Gets or set the root namespace of the project
+        /// </summary>
+        [DataMemberIgnore]
+        public string RootNamespace { get; internal set; }
 
         public bool Equals(ProjectReference other)
         {

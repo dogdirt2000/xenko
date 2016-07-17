@@ -15,10 +15,17 @@
 
     <!-- Default values -->
     <SiliconStudioPlatform Condition=" '$(SiliconStudioPlatform)' == '' ">Windows</SiliconStudioPlatform>
+    <SiliconStudioUI Condition="'$(SiliconStudioUI)' == '' AND '$(SiliconStudioPlatform)' == 'Windows'">SDL;WINFORMS;WPF</SiliconStudioUI>
 
     <SiliconStudioGlobalSettingsTargets Condition="'$(SiliconStudioGlobalSettingsTargets)' == ''">$(MSBuildThisFileDirectory)SiliconStudio.GlobalSettings.targets</SiliconStudioGlobalSettingsTargets>
     <SiliconStudioPostSettingsTargets Condition="'$(SiliconStudioPostSettingsTargets)' == ''">$(MSBuildThisFileDirectory)SiliconStudio.PostSettings.targets</SiliconStudioPostSettingsTargets>
   </PropertyGroup>
+
+  <!-- Build the SiliconStudioUIList using the value of SiliconStudioUI -->
+  <ItemGroup Condition="'$(SiliconStudioUIList)' == ''">
+    <SiliconStudioUIList Condition="'$(SiliconStudioUI)' != ''" Include="$(SiliconStudioUI)" />
+    <SiliconStudioUIList Condition="'$(SiliconStudioUI)' == ''" Include="None" />
+  </ItemGroup>
 
   <!-- Ensure appropriate Solution Platform are available -->
   <Choose>

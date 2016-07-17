@@ -1,5 +1,7 @@
 ﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
+
+using System;
 using System.Runtime.InteropServices;
 
 using SiliconStudio.Core;
@@ -11,7 +13,7 @@ namespace SiliconStudio.Xenko.Graphics
     /// </summary>
     [DataContract]
     [StructLayout(LayoutKind.Sequential)]
-    public struct RasterizerStateDescription
+    public struct RasterizerStateDescription : IEquatable<RasterizerStateDescription>
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="RasterizerStateDescription"/> class.
@@ -64,9 +66,9 @@ namespace SiliconStudio.Xenko.Graphics
         public bool ScissorTestEnable;
 
         /// <summary>
-        /// Enable multisample antialiasing.
+        /// Multisample level.
         /// </summary>
-        public bool MultiSampleAntiAlias;
+        public MSAALevel MultiSampleLevel;
 
         /// <summary>
         /// Enable line antialiasing; only applies if doing line drawing and MultisampleEnable is false.
@@ -83,7 +85,7 @@ namespace SiliconStudio.Xenko.Graphics
             DepthClipEnable = true;
             FrontFaceCounterClockwise = false;
             ScissorTestEnable = false;
-            MultiSampleAntiAlias = false;
+            MultiSampleLevel = MSAALevel.None;
             MultiSampleAntiAliasLine = false;
             DepthBias = 0;
             DepthBiasClamp = 0f;
@@ -101,6 +103,45 @@ namespace SiliconStudio.Xenko.Graphics
                 desc.SetDefault();
                 return desc;
             }
+        }
+
+        public bool Equals(RasterizerStateDescription other)
+        {
+            return FillMode == other.FillMode && CullMode == other.CullMode && FrontFaceCounterClockwise == other.FrontFaceCounterClockwise && DepthBias == other.DepthBias && DepthBiasClamp.Equals(other.DepthBiasClamp) && SlopeScaleDepthBias.Equals(other.SlopeScaleDepthBias) && DepthClipEnable == other.DepthClipEnable && ScissorTestEnable == other.ScissorTestEnable && MultiSampleLevel == other.MultiSampleLevel && MultiSampleAntiAliasLine == other.MultiSampleAntiAliasLine;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            return obj is RasterizerStateDescription && Equals((RasterizerStateDescription)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = (int)FillMode;
+                hashCode = (hashCode*397) ^ (int)CullMode;
+                hashCode = (hashCode*397) ^ FrontFaceCounterClockwise.GetHashCode();
+                hashCode = (hashCode*397) ^ DepthBias;
+                hashCode = (hashCode*397) ^ DepthBiasClamp.GetHashCode();
+                hashCode = (hashCode*397) ^ SlopeScaleDepthBias.GetHashCode();
+                hashCode = (hashCode*397) ^ DepthClipEnable.GetHashCode();
+                hashCode = (hashCode*397) ^ ScissorTestEnable.GetHashCode();
+                hashCode = (hashCode*397) ^ (int)MultiSampleLevel;
+                hashCode = (hashCode*397) ^ MultiSampleAntiAliasLine.GetHashCode();
+                return hashCode;
+            }
+        }
+
+        public static bool operator ==(RasterizerStateDescription left, RasterizerStateDescription right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(RasterizerStateDescription left, RasterizerStateDescription right)
+        {
+            return !left.Equals(right);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
+// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
 using System;
@@ -21,7 +21,6 @@ using SiliconStudio.Xenko.Profiling;
 using SiliconStudio.Xenko.Rendering;
 using SiliconStudio.Xenko.Rendering.Fonts;
 using SiliconStudio.Xenko.Rendering.Sprites;
-using SiliconStudio.Xenko.UI;
 
 namespace SiliconStudio.Xenko.Engine
 {
@@ -30,10 +29,26 @@ namespace SiliconStudio.Xenko.Engine
     /// </summary>
     public class Game : GameBase
     {
+        /// <summary>
+        /// Static event that will be fired when a game is initialized
+        /// </summary>
+        public static event EventHandler GameStarted;
+
+        /// <summary>
+        /// Static event that will be fired when a game is destroyed
+        /// </summary>
+        public static event EventHandler GameDestroyed;
+
         private readonly GameFontSystem gameFontSystem;
 
         private readonly LogListener logListener;
-        private GameSettings gameSettings; // for easy transfer from PrepareContext to Initialize
+
+        /// <summary>
+        /// Readonly game settings as defined in the GameSettings asset
+        /// Please note that it will be populated during initialization
+        /// It will be ok to read them after the GameStarted event or after initialization
+        /// </summary>
+        public GameSettings Settings { get; private set; } // for easy transfer from PrepareContext to Initialize
 
         /// <summary>
         /// Gets the graphics device manager.
@@ -70,12 +85,6 @@ namespace SiliconStudio.Xenko.Engine
         /// </summary>
         /// <value>The audio.</value>
         public AudioSystem Audio { get; private set; }
-
-        /// <summary>
-        /// Gets the UI system.
-        /// </summary>
-        /// <value>The UI.</value>
-        protected UISystem UI { get; private set; }
 
         /// <summary>
         /// Gets the sprite animation system.
@@ -166,32 +175,134 @@ namespace SiliconStudio.Xenko.Engine
             if (logListener != null)
                 GlobalLogger.GlobalMessageLogged += logListener;
 
-            // Create and register all core services
-            Input = new InputManager(Services);
+            // Create all core services, except Input which is created during `Initialize'.
+            // Registration takes place in `Initialize'.
             Script = new ScriptSystem(Services);
             SceneSystem = new SceneSystem(Services);
             Audio = new AudioSystem(Services);
-            UI = new UISystem(Services);
             gameFontSystem = new GameFontSystem(Services);
             SpriteAnimation = new SpriteAnimationSystem(Services);
             ProfilerSystem = new GameProfilingSystem(Services);
 
+            Content.Serializer.LowLevelSerializerSelector = ParameterContainerExtensions.DefaultSceneSerializerSelector;
+
+            // Creates the graphics device manager
+            GraphicsDeviceManager = new GraphicsDeviceManager(this);
+
+            AutoLoadDefaultSettings = true;
+        }
+
+        /// <inheritdoc/>
+        protected override void Destroy()
+        {
+            OnGameDestroyed(this);
+
+            base.Destroy();
+            
+            if (logListener != null)
+                GlobalLogger.GlobalMessageLogged -= logListener;
+        }
+
+        /// <inheritdoc/>
+        protected override void PrepareContext()
+        {
+            base.PrepareContext();
+
+            // Init assets
+            if (Context.InitializeDatabase)
+            {
+                InitializeAssetDatabase();
+
+                var renderingSettings = new RenderingSettings();
+                if (Content.Exists(GameSettings.AssetUrl))
+                {
+                    Settings = Content.Load<GameSettings>(GameSettings.AssetUrl);
+
+                    renderingSettings = Settings.Configurations.Get<RenderingSettings>();
+
+                    // Set ShaderProfile even if AutoLoadDefaultSettings is false (because that is what shaders in effect logs are compiled against, even if actual instantiated profile is different)
+                    if (renderingSettings.DefaultGraphicsProfile > 0)
+                    {
+                        var deviceManager = (GraphicsDeviceManager)graphicsDeviceManager;
+                        if (!deviceManager.ShaderProfile.HasValue)
+                            deviceManager.ShaderProfile = renderingSettings.DefaultGraphicsProfile;
+                    }
+                }
+
+                // Load several default settings
+                if (AutoLoadDefaultSettings)
+                {
+                    var deviceManager = (GraphicsDeviceManager)graphicsDeviceManager;
+                    if (renderingSettings.DefaultGraphicsProfile > 0)
+                    {
+                        deviceManager.PreferredGraphicsProfile = new[] { renderingSettings.DefaultGraphicsProfile };
+                    }
+
+                    if (renderingSettings.DefaultBackBufferWidth > 0) deviceManager.PreferredBackBufferWidth = renderingSettings.DefaultBackBufferWidth;
+                    if (renderingSettings.DefaultBackBufferHeight > 0) deviceManager.PreferredBackBufferHeight = renderingSettings.DefaultBackBufferHeight;
+
+                    deviceManager.PreferredColorSpace = renderingSettings.ColorSpace;
+                    SceneSystem.InitialSceneUrl = Settings?.DefaultSceneUrl;
+                }
+            }
+        }
+
+        internal override void ConfirmRenderingSettings(bool gameCreation)
+        {
+            if (!AutoLoadDefaultSettings) return;
+
+            var renderingSettings = Settings?.Configurations.Get<RenderingSettings>();
+            if (renderingSettings == null) return;
+
+            var deviceManager = (GraphicsDeviceManager)graphicsDeviceManager;
+
+            if (gameCreation)
+            {
+                //execute the following steps only when the game is still at creation stage
+
+                deviceManager.PreferredGraphicsProfile = Context.RequestedGraphicsProfile = new[] { renderingSettings.DefaultGraphicsProfile };
+
+                //if our device height is actually smaller then requested we use the device one
+                deviceManager.PreferredBackBufferHeight = Context.RequestedHeight = Math.Min(renderingSettings.DefaultBackBufferHeight, Window.ClientBounds.Height);
+                //if our device width is actually smaller then requested we use the device one
+                deviceManager.PreferredBackBufferWidth = Context.RequestedWidth = Math.Min(renderingSettings.DefaultBackBufferWidth, Window.ClientBounds.Width);
+            }
+
+            //these might get triggered even during game runtime, resize, orientation change
+
+            if (renderingSettings.AdaptBackBufferToScreen)
+            {
+                var deviceAr = Window.ClientBounds.Width / (float)Window.ClientBounds.Height;
+
+                if (renderingSettings.DefaultBackBufferHeight > renderingSettings.DefaultBackBufferWidth)
+                {
+                    deviceManager.PreferredBackBufferWidth = Context.RequestedWidth = (int)(deviceManager.PreferredBackBufferHeight * deviceAr);
+                }
+                else
+                { 
+                    deviceManager.PreferredBackBufferHeight = Context.RequestedHeight = (int)(deviceManager.PreferredBackBufferWidth / deviceAr);
+                }
+            }
+        }
+
+        protected override void Initialize()
+        {
+            base.Initialize();
+
             // ---------------------------------------------------------
-            // Add common GameSystems - Adding order is important 
+            // Add common GameSystems - Adding order is important
             // (Unless overriden by gameSystem.UpdateOrder)
             // ---------------------------------------------------------
 
             // Add the input manager
+            Input = InputManagerFactory.NewInputManager(Services, Context);
             GameSystems.Add(Input);
 
             // Add the scheduler system
             // - Must be after Input, so that scripts are able to get latest input
-            // - Must be before Entities/Camera/Audio/UI, so that scripts can apply 
+            // - Must be before Entities/Camera/Audio/UI, so that scripts can apply
             // changes in the same frame they will be applied
             GameSystems.Add(Script);
-
-            // Add the UI System
-            GameSystems.Add(UI);
 
             // Add the Audio System
             GameSystems.Add(Audio);
@@ -202,72 +313,14 @@ namespace SiliconStudio.Xenko.Engine
             //Add the sprite animation System
             GameSystems.Add(SpriteAnimation);
 
-            Asset.Serializer.LowLevelSerializerSelector = ParameterContainerExtensions.DefaultSceneSerializerSelector;
-
-            // Creates the graphics device manager
-            GraphicsDeviceManager = new GraphicsDeviceManager(this);
-
             GameSystems.Add(ProfilerSystem);
-
-            AutoLoadDefaultSettings = true;
-        }
-
-        protected override void Destroy()
-        {
-            base.Destroy();
-            
-            if (logListener != null)
-                GlobalLogger.GlobalMessageLogged -= logListener;
-        }
-
-        protected internal override void PrepareContext()
-        {
-            base.PrepareContext();
-
-            // Init assets
-            if (Context.InitializeDatabase)
-            {
-                InitializeAssetDatabase();
-
-                if (Asset.Exists(GameSettings.AssetUrl))
-                {
-                    gameSettings = Asset.Load<GameSettings>(GameSettings.AssetUrl);
-
-                    // Set ShaderProfile even if AutoLoadDefaultSettings is false (because that is what shaders in effect logs are compiled against, even if actual instantiated profile is different)
-                    if (gameSettings.DefaultGraphicsProfileUsed > 0)
-                    {
-                        var deviceManager = (GraphicsDeviceManager)graphicsDeviceManager;
-                        if (!deviceManager.ShaderProfile.HasValue)
-                            deviceManager.ShaderProfile = gameSettings.DefaultGraphicsProfileUsed;
-                    }
-                }
-
-                // Load several default settings
-                if (AutoLoadDefaultSettings)
-                {
-                    var deviceManager = (GraphicsDeviceManager)graphicsDeviceManager;
-                    if (gameSettings.DefaultGraphicsProfileUsed > 0)
-                    {
-                        deviceManager.PreferredGraphicsProfile = new[] { gameSettings.DefaultGraphicsProfileUsed };
-                    }
-                    if (gameSettings.DefaultBackBufferWidth > 0) deviceManager.PreferredBackBufferWidth = gameSettings.DefaultBackBufferWidth;
-                    if (gameSettings.DefaultBackBufferHeight > 0) deviceManager.PreferredBackBufferHeight = gameSettings.DefaultBackBufferHeight;
-                    deviceManager.PreferredColorSpace = gameSettings.ColorSpace;
-                    SceneSystem.InitialSceneUrl = gameSettings.DefaultSceneUrl;
-                }
-            }
-        }
-
-        protected override void Initialize()
-        {
-            base.Initialize();
 
             EffectSystem = new EffectSystem(Services);
 
             // If requested in game settings, compile effects remotely and/or notify new shader requests
-            if (gameSettings != null)
+            if (Settings != null)
             {
-                EffectSystem.Compiler = EffectSystem.CreateEffectCompiler(EffectSystem, gameSettings.PackageId, gameSettings.EffectCompilation, gameSettings.RecordUsedEffects);
+                EffectSystem.Compiler = EffectSystem.CreateEffectCompiler(EffectSystem, Settings.PackageId, Settings.EffectCompilation, Settings.RecordUsedEffects);
             }
 
             GameSystems.Add(EffectSystem);
@@ -275,12 +328,12 @@ namespace SiliconStudio.Xenko.Engine
             GameSystems.Add(SceneSystem);
 
             // TODO: data-driven?
-            Asset.Serializer.RegisterSerializer(new ImageSerializer());
-            Asset.Serializer.RegisterSerializer(new SoundEffectSerializer(Audio.AudioEngine));
-            Asset.Serializer.RegisterSerializer(new SoundMusicSerializer(Audio.AudioEngine));
+            Content.Serializer.RegisterSerializer(new ImageSerializer());
 
             // enable multi-touch by default
             Input.MultiTouchEnabled = true;
+
+            OnGameStarted(this);
         }
 
         internal static void InitializeAssetDatabase()
@@ -294,7 +347,7 @@ namespace SiliconStudio.Xenko.Engine
                 var mountPath = VirtualFileSystem.ResolveProviderUnsafe("/asset", true).Provider == null ? "/asset" : null;
                 var databaseFileProvider = new DatabaseFileProvider(objDatabase, mountPath);
 
-                AssetManager.GetFileProvider = () => databaseFileProvider;
+                ContentManager.GetFileProvider = () => databaseFileProvider;
             }
         }
 
@@ -318,7 +371,7 @@ namespace SiliconStudio.Xenko.Engine
 
                     using (var stream = System.IO.File.Create(newFileName))
                     {
-                        GraphicsDevice.BackBuffer.Save(stream, ImageFileType.Png);
+                        GraphicsDevice.Presenter.BackBuffer.Save(GraphicsContext.CommandList, stream, ImageFileType.Png);
                     }
                 }
             }
@@ -342,6 +395,16 @@ namespace SiliconStudio.Xenko.Engine
         protected virtual LogListener GetLogListener()
         {
             return new ConsoleLogListener();
+        }
+
+        private static void OnGameStarted(Game game)
+        {
+            GameStarted?.Invoke(game, null);
+        }
+
+        private static void OnGameDestroyed(Game game)
+        {
+            GameDestroyed?.Invoke(game, null);
         }
     }
 }

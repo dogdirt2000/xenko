@@ -1,7 +1,9 @@
 ﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using NUnit.Framework;
@@ -94,7 +96,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
             TestGameLogger.Info(@"Saving non null image");
             testName = testName ?? CurrentTestContext?.Test.FullName;
             TestGameLogger.Info(@"saving remotely.");
-            using (var image = textureToSave.GetDataAsImage())
+            using (var image = textureToSave.GetDataAsImage(GraphicsContext.CommandList))
             {
                 try
                 {
@@ -114,7 +116,8 @@ namespace SiliconStudio.Xenko.Graphics.Regression
         public void SaveBackBuffer(string testName = null)
         {
             TestGameLogger.Info(@"Saving the backbuffer");
-            SaveImage(GraphicsDevice.BackBuffer, testName);
+            // TODO GRAPHICS REFACTOR switched to presenter backbuffer, need to check if it's good
+            SaveImage(GraphicsDevice.Presenter.BackBuffer, testName);
         }
 
         /// <summary>
@@ -169,17 +172,16 @@ namespace SiliconStudio.Xenko.Graphics.Regression
 
         private void FitPresentationParametersToWindowRatio(int windowWidth, int windowHeight, PresentationParameters parameters)
         {
-            var panelRatio = (float)windowWidth / windowHeight;
             var desiredWidth = parameters.BackBufferWidth;
             var desiredHeight = parameters.BackBufferHeight;
 
-            if (panelRatio >= 1.0f) // Landscape => use height as base
+            if (windowWidth >= windowHeight) // Landscape => use height as base
             {
-                parameters.BackBufferHeight = (int)(desiredWidth / panelRatio);
+                parameters.BackBufferHeight = (int)(desiredWidth * (float)windowHeight / (float)windowWidth);
             }
             else // Portrait => use width as base
             {
-                parameters.BackBufferWidth = (int)(desiredHeight * panelRatio);
+                parameters.BackBufferWidth = (int)(desiredHeight * (float)windowWidth / (float)windowHeight);
             }
         }
 
@@ -187,11 +189,17 @@ namespace SiliconStudio.Xenko.Graphics.Regression
         {
             await base.LoadContent();
 
+#if !SILICONSTUDIO_XENKO_UI_SDL
+            // Disabled for SDL as a positio of (0,0) actually means that the client area of the
+            // window will be at (0,0) not the top left corner of the non-client area of the window.
             Window.Position = Int2.Zero; // avoid possible side effects due to position of the window in the screen.
+#endif
 
 #if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP
             // Register 3D card name
-            ImageTester.ImageTestResultConnection.DeviceName += "_" + GraphicsDevice.Adapter.Description.Split('\0')[0].TrimEnd(' '); // Workaround for sharpDX bug: Description ends with an series trailing of '\0' characters
+            // TODO: This doesn't work well because ImageTester.ImageTestResultConnection is static, this will need improvements
+            if (!ImageTester.ImageTestResultConnection.DeviceName.Contains("_"))
+                ImageTester.ImageTestResultConnection.DeviceName += "_" + GraphicsDevice.Adapter.Description.Split('\0')[0].TrimEnd(' '); // Workaround for sharpDX bug: Description ends with an series trailing of '\0' characters
 #endif
 
             Script.AddTask(RegisterTestsInternal);
@@ -199,7 +207,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
 
         private Task RegisterTestsInternal()
         {
-            if(!FrameGameSystem.IsUnityTestFeeding)
+            if(!FrameGameSystem.IsUnitTestFeeding)
                 RegisterTests();
 
             return Task.FromResult(true);
@@ -226,10 +234,12 @@ namespace SiliconStudio.Xenko.Graphics.Regression
             if (!ScreenShotAutomationEnabled)
                 return;
 
+            string testName;
+
             if (FrameGameSystem.AllTestsCompleted)
                 Exit();
-            else if (FrameGameSystem.TakeSnapshot)
-                SaveBackBuffer(FrameGameSystem.TestName);
+            else if (FrameGameSystem.IsScreenshotNeeded(out testName))
+                SaveBackBuffer(testName);
         }
 
         protected void PerformTest(Action<Game> testAction, GraphicsProfile? profileOverride = null, bool takeSnapshot = false)
@@ -241,7 +251,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
                 game.GraphicsDeviceManager.PreferredGraphicsProfile = new[] { profileOverride.Value };
 
             // register the tests.
-            game.FrameGameSystem.IsUnityTestFeeding = true;
+            game.FrameGameSystem.IsUnitTestFeeding = true;
             game.FrameGameSystem.Draw(() => testAction(game));
             if (takeSnapshot)
                 game.FrameGameSystem.TakeScreenshot();
@@ -249,7 +259,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
             RunGameTest(game);
         }
 
-        protected void PerformDrawTest(Action<Game, RenderContext, RenderFrame> drawTestAction, GraphicsProfile? profileOverride = null, string testName = null, bool takeSnapshot = true)
+        protected void PerformDrawTest(Action<Game, RenderDrawContext, RenderFrame> drawTestAction, GraphicsProfile? profileOverride = null, string subTestName = null, bool takeSnapshot = true)
         {
             // create the game instance
             var typeGame = GetType();
@@ -258,10 +268,10 @@ namespace SiliconStudio.Xenko.Graphics.Regression
                 game.GraphicsDeviceManager.PreferredGraphicsProfile = new[] { profileOverride.Value };
 
             // register the tests.
-            game.FrameGameSystem.IsUnityTestFeeding = true;
-            game.FrameGameSystem.TestName = TestContext.CurrentContext.Test.FullName+testName;
+            game.FrameGameSystem.IsUnitTestFeeding = true;
+            var testName = TestContext.CurrentContext.Test.FullName+subTestName;
             if (takeSnapshot)
-                game.FrameGameSystem.TakeScreenshot();
+                game.FrameGameSystem.TakeScreenshot(null, testName);
 
             // add the render callback
             var graphicsCompositor = new SceneGraphicsCompositorLayers
@@ -296,8 +306,19 @@ namespace SiliconStudio.Xenko.Graphics.Regression
 
             GameTester.RunGameTest(game);
 
+            var failedTests = new List<string>();
+
             if (game.ScreenShotAutomationEnabled)
-                Assert.IsTrue(ImageTester.RequestImageComparisonStatus(game.CurrentTestContext.Test.FullName), "The image comparison returned false.");
+            {
+                foreach (var testName in game.FrameGameSystem.TestNames)
+                {
+                    if (!ImageTester.RequestImageComparisonStatus(testName))
+                        failedTests.Add(testName);
+                }
+            }
+
+            if (failedTests.Count > 0)
+                Assert.Fail($"Some image comparison tests failed: {string.Join(", ", failedTests.Select(x => x))}");
         }
         
         /// <summary>
@@ -320,7 +341,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
         protected void SaveTexture(Texture texture, string filename)
         {
 #if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP
-            using (var image = texture.GetDataAsImage())
+            using (var image = texture.GetDataAsImage(GraphicsContext.CommandList))
             {
                 using (var resultFileStream = File.OpenWrite(filename))
                 {

@@ -3,16 +3,13 @@
 namespace SiliconStudio.Xenko.Rendering.Lights
 {
     /// <summary>
-    /// Defines a group of spot lights
+    /// Defines a group of point lights
     /// </summary>
-    class LightPointGroup<int TMaxLightCount> : DirectLightGroup, NormalStream, PositionStream4, LightUtil
+    class LightPointGroup<int TMaxLightCount> : DirectLightGroupPerDraw, LightPoint
     {
-        cbuffer PerObject
+        cbuffer PerDraw.Lighting
         {
-            float3 LightPositionWS[TMaxLightCount];
-            float  LightInvSquareRadius[TMaxLightCount];
-            [Color]
-            float3 LightColor[TMaxLightCount];
+            PointLightData Lights[TMaxLightCount];
         }
 
         override int GetMaxLightCount()
@@ -25,17 +22,13 @@ namespace SiliconStudio.Xenko.Rendering.Lights
         /// </summary>
         override void PrepareDirectLightCore(int lightIndex)
         {
-            float3 lightVector = LightPositionWS[lightIndex] - streams.PositionWS;
-            float lightVectorLength = length(lightVector);
-            float3 lightVectorNorm = lightVector / lightVectorLength;
+            // TODO: Workaraound for SPIR-V compiler. Revert later
+            PointLightDataInternal data;
+            data.PositionWS = Lights[lightIndex].PositionWS;
+            data.InvSquareRadius = Lights[lightIndex].InvSquareRadius;
+            data.Color = Lights[lightIndex].Color;
 
-            float lightInvSquareRadius = LightInvSquareRadius[lightIndex];
-
-            float attenuation = 1;
-            attenuation *= GetDistanceAttenuation(lightVector , lightInvSquareRadius);
-
-            streams.lightColor = LightColor[lightIndex] * attenuation;
-            streams.lightDirectionWS = lightVectorNorm;
+            ProcessLight(data);
         }
     };
 }

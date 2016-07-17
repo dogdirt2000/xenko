@@ -12,13 +12,17 @@
     <SiliconStudioAssemblyProcessor>true</SiliconStudioAssemblyProcessor>
     <SiliconStudioAssemblyProcessorOptions>--auto-module-initializer --serialization</SiliconStudioAssemblyProcessorOptions>
     <SiliconStudioPlatformDependent>true</SiliconStudioPlatformDependent>
-    <TargetFrameworkVersion>$(TargetFrameworkVersionToolLow)</TargetFrameworkVersion>
+    <TargetFrameworkVersion>$(TargetFrameworkVersionTool)</TargetFrameworkVersion>
     <XenkoBuildTags>WindowsTools</XenkoBuildTags>
   </PropertyGroup>
-  <ItemGroup Condition=" '$(AutoIncludeSystemAssembly)' != 'true'">
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-  </ItemGroup>
+  <Choose>
+    <When Condition=" '$(AutoIncludeSystemAssembly)' != 'true'">
+      <ItemGroup>
+        <Reference Include="System" />
+        <Reference Include="System.Core" />
+      </ItemGroup>
+    </When>
+  </Choose>
   <!-- Include platform dependent assembly when specified -->
   <Choose>
     <When Condition="'$(SiliconStudioPlatform)' == 'WindowsStore' or '$(SiliconStudioPlatform)' == 'WindowsPhone' or '$(SiliconStudioPlatform)' == 'Windows10'">
@@ -43,6 +47,7 @@
     <Compile Include="Extensions\ObjectExtensions.cs" />
     <Compile Include="Extensions\TaskExtensions.cs" />
     <Compile Include="Extensions\TypeDescriptorExtensions.cs" />
+    <Compile Include="IDestroyable.cs" />
     <Compile Include="IO\UDirectory.cs" />
     <Compile Include="IO\UDirectorySerializer.cs" />
     <Compile Include="IO\UFile.cs" />
@@ -80,10 +85,7 @@
     <Compile Include="Reflection\PrimitiveDescriptor.cs" />
     <Compile Include="Reflection\PropertyDescriptor.cs" />
     <Compile Include="Reflection\MemberPath.cs" />
-    <Compile Include="Reflection\ShadowAttributes.cs" />
-    <Compile Include="Reflection\ShadowContainer.cs" />
-    <Compile Include="Reflection\ShadowId.cs" />
-    <Compile Include="Reflection\ShadowObject.cs" />
+    <Compile Include="Reflection\ShadowObjectExtensions.cs" />
     <Compile Include="Reflection\ThisDescriptor.cs" />
     <Compile Include="Reflection\TypeDescriptorFactory.cs" />
     <Compile Include="Reflection\TypeExtensions.cs" />
@@ -93,9 +95,25 @@
     <Compile Include="Settings\NamespaceDoc.cs" />
     <Compile Include="Settings\SettingsDictionary.cs" />
     <Compile Include="Settings\SettingsDictionarySerializer.cs" />
+    <Compile Include="Settings\SettingsEntryChangeValueOperation.cs" />
     <Compile Include="Settings\SettingsProfileSerializer.cs" />
+    <Compile Include="Transactions\DiscardReason.cs" />
+    <Compile Include="Transactions\IAsyncTransaction.cs" />
+    <Compile Include="Transactions\IMergeableOperation.cs" />
+    <Compile Include="Transactions\IOperation.cs" />
+    <Compile Include="Transactions\IReadOnlyTransaction.cs" />
+    <Compile Include="Transactions\ITransaction.cs" />
+    <Compile Include="Transactions\ITransactionStack.cs" />
+    <Compile Include="Transactions\Operation.cs" />
+    <Compile Include="Transactions\Transaction.cs" />
+    <Compile Include="Transactions\TransactionEventArgs.cs" />
+    <Compile Include="Transactions\TransactionException.cs" />
+    <Compile Include="Transactions\TransactionsDiscardedEventArgs.cs" />
+    <Compile Include="Transactions\TransactionStack.cs" />
+    <Compile Include="Transactions\TransactionStackFactory.cs" />
     <Compile Include="Windows\FileLock.cs" />
     <Compile Include="Windows\GlobalMutex.cs" />
+    <Compile Include="Yaml\DynamicYaml.cs" />
     <Compile Include="Yaml\DynamicYamlExtensions.cs" />
     <Compile Include="Yaml\IDynamicYamlNode.cs" />
     <Compile Include="Yaml\ParsingEventListEmitter.cs" />
@@ -145,18 +163,13 @@
     <Compile Include="Yaml\DynamicYamlScalar.cs" />
     <Compile Include="Yaml\GuidSerializer.cs" />
     <Compile Include="Yaml\ObjectIdSerializer.cs" />
-    <Compile Include="Yaml\OverrideKeyMappingTransform.cs" />
+    <Compile Include="Yaml\CustomObjectSerializerBackend.cs" />
     <Compile Include="Yaml\UDirectorySerializer.cs" />
     <Compile Include="Yaml\UFileSerializer.cs" />
     <Compile Include="Yaml\YamlSerializer.cs" />
     <Compile Include="Yaml\YamlSerializerFactoryAttribute.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\presentation\SiliconStudio.ActionStack\SiliconStudio.ActionStack.csproj">
-      <Project>{e9c3adc8-3f13-4673-aaa8-a0e97419db5b}</Project>
-      <Name>SiliconStudio.ActionStack</Name>
-      <Private>False</Private>
-    </ProjectReference>
     <ProjectReference Include="..\SiliconStudio.Core.Mathematics\SiliconStudio.Core.Mathematics.csproj">
       <Project>{1677B922-CCF0-44DE-B57E-1CDD3D2B8E8A}</Project>
       <Name>SiliconStudio.Core.Mathematics</Name>

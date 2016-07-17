@@ -1,6 +1,7 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
+using System.Collections.Generic;
 using SiliconStudio.Core;
 using SiliconStudio.Xenko.Audio;
 using SiliconStudio.Xenko.Engine.Design;
@@ -16,16 +17,16 @@ namespace SiliconStudio.Xenko.Engine
     /// <para>Use the AudioSytem's <see cref="AudioSystem.AddListener"/> and <see cref="AudioSystem.RemoveListener"/> functions 
     /// to activate/deactivate the listeners that are actually listening at a given time.</para>
     /// <para>The entity needs to be added to the Entity System so that the associated AudioListenerComponent can be processed.</para></remarks>
-    [Display(6000, "Audio Listener", Expand = ExpandRule.Once)]
+    [Display("Audio Listener", Expand = ExpandRule.Once)]
     [DataContract("AudioListenerComponent")]
-    [DefaultEntityComponentProcessor(typeof(AudioListenerProcessor))]
-    public sealed class AudioListenerComponent : EntityComponent
+    [DefaultEntityComponentProcessor(typeof(AudioListenerProcessor), ExecutionMode = ExecutionMode.Runtime)]
+    [ComponentOrder(6000)]
+    public sealed class AudioListenerComponent : ActivableEntityComponent
     {
-        public static PropertyKey<AudioListenerComponent> Key = new PropertyKey<AudioListenerComponent>("Key", typeof(AudioListenerComponent));
+        [DataMemberIgnore]
+        internal HashSet<SoundInstance> AttachedInstances = new HashSet<SoundInstance>();
 
-        public override PropertyKey GetDefaultKey()
-        {
-            return Key;
-        }
+        [DataMemberIgnore]
+        internal AudioListener Listener;
     }
 }

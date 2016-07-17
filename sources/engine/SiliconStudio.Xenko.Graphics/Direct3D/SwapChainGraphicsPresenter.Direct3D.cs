@@ -23,12 +23,16 @@
 
 #if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D
 using System;
-#if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP
-using System.Windows.Forms;
-#endif
+using System.Reflection;
 using SharpDX;
 using SharpDX.DXGI;
 using SharpDX.Mathematics.Interop;
+using SiliconStudio.Core.Collections;
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D11
+using BackBufferResourceType = SharpDX.Direct3D11.Texture2D;
+#elif SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+using BackBufferResourceType = SharpDX.Direct3D12.Resource;
+#endif
 
 namespace SiliconStudio.Xenko.Graphics
 {
@@ -39,9 +43,13 @@ namespace SiliconStudio.Xenko.Graphics
     {
         private SwapChain swapChain;
 
-        private Texture backBuffer;
+        private readonly Texture backBuffer;
 
         private int bufferCount;
+
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+        private int bufferSwapIndex;
+#endif
 
         public SwapChainGraphicsPresenter(GraphicsDevice device, PresentationParameters presentationParameters)
             : base(device, presentationParameters)
@@ -51,27 +59,15 @@ namespace SiliconStudio.Xenko.Graphics
             // Initialize the swap chain
             swapChain = CreateSwapChain();
 
-            backBuffer = new Texture(device).InitializeFrom(swapChain.GetBackBuffer<SharpDX.Direct3D11.Texture2D>(0), Description.BackBufferFormat.IsSRgb());
+            backBuffer = new Texture(device).InitializeFrom(swapChain.GetBackBuffer<BackBufferResourceType>(0), Description.BackBufferFormat.IsSRgb());
 
             // Reload should get backbuffer from swapchain as well
             //backBufferTexture.Reload = graphicsResource => ((Texture)graphicsResource).Recreate(swapChain.GetBackBuffer<SharpDX.Direct3D11.Texture>(0));
         }
 
-        public override Texture BackBuffer
-        {
-            get
-            {
-                return backBuffer;
-            }
-        }
+        public override Texture BackBuffer => backBuffer;
 
-        public override object NativePresenter
-        {
-            get
-            {
-                return swapChain;
-            }
-        }
+        public override object NativePresenter => swapChain;
 
         public override bool IsFullScreen
         {
@@ -103,13 +99,13 @@ namespace SiliconStudio.Xenko.Graphics
                     swapChain.GetFullscreenState(out isCurrentlyFullscreen, out currentOutput);
 
                     // check if the current fullscreen monitor is the same as new one
-                    if (isCurrentlyFullscreen == value && output != null && currentOutput != null && currentOutput.NativePointer == output.NativeOutput.NativePointer)
+                    // If not fullscreen, currentOutput will be null but output won't be, so don't compare them
+                    if (isCurrentlyFullscreen == value && (isCurrentlyFullscreen == false || (output != null && currentOutput != null && currentOutput.NativePointer == output.NativeOutput.NativePointer)))
                         return;
                 }
                 finally
                 {
-                    if (currentOutput != null)
-                        currentOutput.Dispose();
+                    currentOutput?.Dispose();
                 }
 
                 bool switchToFullScreen = value;
@@ -117,18 +113,11 @@ namespace SiliconStudio.Xenko.Graphics
                 var description = new ModeDescription(backBuffer.ViewWidth, backBuffer.ViewHeight, Description.RefreshRate.ToSharpDX(), (SharpDX.DXGI.Format)Description.BackBufferFormat);
                 if (switchToFullScreen)
                 {
-                    // Force render target destruction
-                    // TODO: We should track all user created render targets that points to back buffer as well (or deny their creation?)
-                    backBuffer.OnDestroyed();
-
                     OnDestroyed();
 
                     Description.IsFullScreen = true;
 
                     OnRecreated();
-
-                    // Recreate render target
-                    backBuffer.OnRecreate();
                 }
                 else
                 {
@@ -150,15 +139,29 @@ namespace SiliconStudio.Xenko.Graphics
             }
         }
 
+        public override void BeginDraw(CommandList commandList)
+        {
+        }
+
+        public override void EndDraw(CommandList commandList, bool present)
+        {
+        }
+
         public override void Present()
         {
             try
             {
                 swapChain.Present((int) PresentInterval, PresentFlags.None);
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+                // Manually swap back buffer
+                backBuffer.NativeResource.Dispose();
+                backBuffer.InitializeFrom(swapChain.GetBackBuffer<BackBufferResourceType>((++bufferSwapIndex) % bufferCount), Description.BackBufferFormat.IsSRgb());
+#endif
             }
             catch (SharpDXException sharpDxException)
             {
-                throw new GraphicsException("Unexpected error on Present", sharpDxException, GraphicsDevice.GraphicsDeviceStatus);
+                var deviceStatus = GraphicsDevice.GraphicsDeviceStatus;
+                throw new GraphicsException($"Unexpected error on Present (device status: {deviceStatus})", sharpDxException, deviceStatus);
             }
         }
 
@@ -171,7 +174,7 @@ namespace SiliconStudio.Xenko.Graphics
             }
         }
 
-        public override void OnDestroyed()
+        protected internal override void OnDestroyed()
         {
             // Manually update back buffer texture
             backBuffer.OnDestroyed();
@@ -191,7 +194,7 @@ namespace SiliconStudio.Xenko.Graphics
             swapChain = CreateSwapChain();
 
             // Get newly created native texture
-            var backBufferTexture = swapChain.GetBackBuffer<SharpDX.Direct3D11.Texture2D>(0);
+            var backBufferTexture = swapChain.GetBackBuffer<BackBufferResourceType>(0);
 
             // Put it in our back buffer texture
             // TODO: Update new size
@@ -204,8 +207,11 @@ namespace SiliconStudio.Xenko.Graphics
             // Manually update back buffer texture
             backBuffer.OnDestroyed();
 
+            // Manually update all children textures
+            var fastList = DestroyChildrenTextures(backBuffer);
+
 #if SILICONSTUDIO_PLATFORM_WINDOWS_RUNTIME
-            var swapChainPanel = Description.DeviceWindowHandle.NativeHandle as Windows.UI.Xaml.Controls.SwapChainPanel;
+            var swapChainPanel = Description.DeviceWindowHandle.NativeWindow as Windows.UI.Xaml.Controls.SwapChainPanel;
             if (swapChainPanel != null)
             {
                 var swapChain2 = swapChain.QueryInterface<SwapChain2>();
@@ -225,10 +231,15 @@ namespace SiliconStudio.Xenko.Graphics
             swapChain.ResizeBuffers(bufferCount, width, height, (SharpDX.DXGI.Format)format, SwapChainFlags.None);
 
             // Get newly created native texture
-            var backBufferTexture = swapChain.GetBackBuffer<SharpDX.Direct3D11.Texture2D>(0);
+            var backBufferTexture = swapChain.GetBackBuffer<BackBufferResourceType>(0);
 
             // Put it in our back buffer texture
             backBuffer.InitializeFrom(backBufferTexture, Description.BackBufferFormat.IsSRgb());
+
+            foreach (var texture in fastList)
+            {
+                texture.InitializeFrom(backBuffer, texture.ViewDescription);
+            }
         }
 
         protected override void ResizeDepthStencilBuffer(int width, int height, PixelFormat format)
@@ -240,10 +251,38 @@ namespace SiliconStudio.Xenko.Graphics
             // Manually update the texture
             DepthStencilBuffer.OnDestroyed();
 
+            // Manually update all children textures
+            var fastList = DestroyChildrenTextures(DepthStencilBuffer);
+
             // Put it in our back buffer texture
             DepthStencilBuffer.InitializeFrom(newTextureDescrition);
+
+            foreach (var texture in fastList)
+            {
+                texture.InitializeFrom(DepthStencilBuffer, texture.ViewDescription);
+            }
         }
 
+        /// <summary>
+        /// Calls <see cref="Texture.OnDestroyed"/> for all children of the specified texture
+        /// </summary>
+        /// <param name="parentTexture">Specified parent texture</param>
+        /// <returns>A list of the children textures which were destroyed</returns>
+        private FastList<Texture> DestroyChildrenTextures(Texture parentTexture)
+        {
+            var fastList = new FastList<Texture>();
+            foreach (var resource in GraphicsDevice.Resources)
+            {
+                var texture = resource as Texture;
+                if (texture != null && texture.ParentTexture == parentTexture)
+                {
+                    texture.OnDestroyed();
+                    fastList.Add(texture);
+                }
+            }
+
+            return fastList;
+        }
 
         private SwapChain CreateSwapChain()
         {
@@ -256,7 +295,7 @@ namespace SiliconStudio.Xenko.Graphics
 #if SILICONSTUDIO_PLATFORM_WINDOWS_RUNTIME
             return CreateSwapChainForWindowsRuntime();
 #else
-            return CreateSwapChainForDesktop();
+            return CreateSwapChainForWindows();
 #endif
         }
 
@@ -271,7 +310,7 @@ namespace SiliconStudio.Xenko.Graphics
                 Height = Description.BackBufferHeight,
                 Format = (SharpDX.DXGI.Format)Description.BackBufferFormat.ToNonSRgb(),
                 Stereo = false,
-                SampleDescription = new SharpDX.DXGI.SampleDescription((int)Description.MultiSampleCount, 0),
+                SampleDescription = new SharpDX.DXGI.SampleDescription((int)Description.MultiSampleLevel, 0),
                 Usage = Usage.BackBuffer | Usage.RenderTargetOutput,
                 // Use two buffers to enable flip effect.
                 BufferCount = bufferCount,
@@ -284,7 +323,7 @@ namespace SiliconStudio.Xenko.Graphics
             {
                 case Games.AppContextType.WindowsRuntime:
                 {
-                    var nativePanel = ComObject.As<ISwapChainPanelNative>(Description.DeviceWindowHandle.NativeHandle);
+                    var nativePanel = ComObject.As<ISwapChainPanelNative>(Description.DeviceWindowHandle.NativeWindow);
                     // Creates the swap chain for XAML composition
                     swapChain = new SwapChain1(GraphicsAdapterFactory.NativeFactory, GraphicsDevice.NativeDevice, ref description);
 
@@ -299,28 +338,62 @@ namespace SiliconStudio.Xenko.Graphics
             return swapChain;
         }
 #else
-        private SwapChain CreateSwapChainForDesktop()
+        /// <summary>
+        /// Create the SwapChain on Windows. To avoid any hard dependency on a actual windowing system
+        /// we assume that the <c>Description.DeviceWindowHandle.NativeHandle</c> holds
+        /// a window type that exposes the <code>Handle</code> property of type <see cref="IntPtr"/>.
+        /// </summary>
+        /// <returns></returns>
+        private SwapChain CreateSwapChainForWindows()
         {
-            var control = Description.DeviceWindowHandle.NativeHandle as Control;
-            if (control == null)
+            var nativeHandle = Description.DeviceWindowHandle.NativeWindow;
+            var handleProperty = nativeHandle.GetType().GetProperty("Handle", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (handleProperty != null && handleProperty.PropertyType == typeof(IntPtr))
             {
-                throw new NotSupportedException(string.Format("Form of type [{0}] is not supported. Only System.Windows.Control are supported", Description.DeviceWindowHandle != null ? Description.DeviceWindowHandle.GetType().Name : "null"));
+                var hwndPtr = (IntPtr)handleProperty.GetValue(nativeHandle);
+                if (hwndPtr != IntPtr.Zero)
+                {
+                    return CreateSwapChainForDesktop(hwndPtr);
+                }
             }
+            throw new NotSupportedException($"Form of type [{Description.DeviceWindowHandle?.GetType().Name ?? "null"}] is not supported. Only System.Windows.Control or SDL2.Window are supported");
+        }
 
+        private SwapChain CreateSwapChainForDesktop(IntPtr handle)
+        {
             bufferCount = 1;
+            var backbufferFormat = Description.BackBufferFormat;
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+            // TODO D3D12 (check if this setting make sense on D3D11 too?)
+            backbufferFormat = backbufferFormat.ToNonSRgb();
+            // TODO D3D12 Can we make it work with something else after?
+            bufferCount = 2;
+#endif
             var description = new SwapChainDescription
                 {
-                    ModeDescription = new ModeDescription(Description.BackBufferWidth, Description.BackBufferHeight, Description.RefreshRate.ToSharpDX(), (SharpDX.DXGI.Format)Description.BackBufferFormat), 
+                    ModeDescription = new ModeDescription(Description.BackBufferWidth, Description.BackBufferHeight, Description.RefreshRate.ToSharpDX(), (SharpDX.DXGI.Format)backbufferFormat), 
                     BufferCount = bufferCount, // TODO: Do we really need this to be configurable by the user?
-                    OutputHandle = control.Handle, 
-                    SampleDescription = new SampleDescription((int)Description.MultiSampleCount, 0), 
+                    OutputHandle = handle,
+                    SampleDescription = new SampleDescription((int)Description.MultiSampleLevel, 0),
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D11
                     SwapEffect = SwapEffect.Discard,
+#elif SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+                    SwapEffect = SwapEffect.FlipDiscard,
+#endif
                     Usage = SharpDX.DXGI.Usage.BackBuffer | SharpDX.DXGI.Usage.RenderTargetOutput,
                     IsWindowed = true,
                     Flags = Description.IsFullScreen ? SwapChainFlags.AllowModeSwitch : SwapChainFlags.None, 
                 };
 
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D11
             var newSwapChain = new SwapChain(GraphicsAdapterFactory.NativeFactory, GraphicsDevice.NativeDevice, description);
+#elif SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+            var newSwapChain = new SwapChain(GraphicsAdapterFactory.NativeFactory, GraphicsDevice.NativeCommandQueue, description);
+#endif
+
+            //prevent normal alt-tab
+            GraphicsAdapterFactory.NativeFactory.MakeWindowAssociation(handle, WindowAssociationFlags.IgnoreAltEnter);
+
             if (Description.IsFullScreen)
             {
                 // Before fullscreen switch

@@ -9,6 +9,7 @@ using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Xenko.Input;
+using SiliconStudio.Xenko.Rendering.Sprites;
 using SiliconStudio.Xenko.UI.Controls;
 
 namespace SiliconStudio.Xenko.UI.Tests.Regression
@@ -29,7 +30,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
 
         public ScrollingTextTest()
         {
-            CurrentVersion = 4;
+            CurrentVersion = 6; // Offset changed due to size changes, but visually correct
         }
 
         protected override async Task LoadContent()
@@ -43,7 +44,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
                 DesiredCharacterNumber = 25, 
                 Text = InitialText,
                 TextColor = Color.Black,
-                Font = Asset.Load<SpriteFont>("CourierNew12"), 
+                Font = Content.Load<SpriteFont>("CourierNew12"), 
                 IsEnabled = IsAutomatic,
                 SynchronousCharacterGeneration = true
             };
@@ -54,7 +55,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
                 Content = textScroller, 
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                BackgroundImage = new Sprite(Asset.Load<Texture>("DumbWhite"))
+                BackgroundImage = (SpriteFromTexture)new Sprite(Content.Load<Texture>("DumbWhite"))
             };
 
             UIComponent.RootElement = decorator;

@@ -16,12 +16,16 @@
     <SiliconStudioAssemblyProcessor>true</SiliconStudioAssemblyProcessor>
     <SiliconStudioAssemblyProcessorOptions>--auto-module-initializer --serialization</SiliconStudioAssemblyProcessorOptions>
   </PropertyGroup>
-  <ItemGroup Condition=" '$(AutoIncludeSystemAssembly)' != 'true'">
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.XML" />
-    <Reference Include="System.XML.Linq" />
-  </ItemGroup>
+  <Choose>
+    <When Condition=" '$(AutoIncludeSystemAssembly)' != 'true'">
+      <ItemGroup>
+        <Reference Include="System" />
+        <Reference Include="System.Core" />
+        <Reference Include="System.XML" />
+        <Reference Include="System.XML.Linq" />
+      </ItemGroup>
+    </When>
+  </Choose>
   <ItemGroup>
     <Compile Include="..\..\shared\SharedAssemblyInfo.cs">
       <Link>Properties\SharedAssemblyInfo.cs</Link>
@@ -31,15 +35,16 @@
     <Compile Include="LZ4\ILZ4Service.cs" />
     <Compile Include="LZ4\LZ4Codec.cs" />
     <Compile Include="LZ4\LZ4Stream.cs" />
-    <Compile Include="LZ4\Services\Native32LZ4Service.cs" />
-    <Compile Include="LZ4\Services\Native64LZ4Service.cs" />
-    <Compile Include="LZ4\Services\NativeLZ4Base.cs" />
+    <Compile Include="LZ4\Services\NativeLz4Service.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Reflection\IdentifiableHelper.cs" />
+    <Compile Include="Reflection\ShadowObject.cs" />
+    <Compile Include="Reflection\ShadowObjectPropertyKey.cs" />
     <Compile Include="Serialization\Assets\AssetManager.ReferenceCounting.cs" />
     <Compile Include="Serialization\Assets\AssetManagerException.cs" />
     <Compile Include="Serialization\Assets\AssetManagerLoaderSettings.cs" />
     <Compile Include="Serialization\Assets\AssetManagerStats.cs" />
-    <Compile Include="Serialization\Assets\AssetProfilingKeys.cs" />
+    <Compile Include="Serialization\Assets\ContentProfilingKeys.cs" />
     <Compile Include="Serialization\Assets\AssetManager.AssetReference.cs" />
     <Compile Include="Serialization\Assets\NamespaceDoc.cs" />
     <Compile Include="Serialization\Contents\DataContentSerializerWithReuse.cs" />
@@ -49,7 +54,7 @@
     <Compile Include="IO\ListStore.cs" />
     <Compile Include="IO\Store.cs" />
     <Compile Include="Serialization\Assets\AssetIndexMap.cs" />
-    <Compile Include="Serialization\Assets\AssetManager.cs" />
+    <Compile Include="Serialization\Assets\ContentManager.cs" />
     <Compile Include="Serialization\Assets\AssetOperationParameters.cs" />
     <Compile Include="Serialization\Assets\AssetSerializer.cs" />
     <Compile Include="Serialization\Assets\ChunkHeader.cs" />
@@ -61,7 +66,8 @@
     <Compile Include="Serialization\ContentReference.cs" />
     <Compile Include="Serialization\ContentReferenceDataSerializer.cs" />
     <Compile Include="Serialization\IContentData.cs" />
-    <Compile Include="Serialization\IContentReference.cs" />
+    <Compile Include="Serialization\ILoadableReference.cs" />
+    <Compile Include="Serialization\IReference.cs" />
     <Compile Include="Serialization\AttachedReference.cs" />
     <Compile Include="Serialization\AttachedReferenceManager.cs" />
     <Compile Include="Storage\Blob.cs" />
@@ -88,6 +94,10 @@
     <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\SiliconStudio.Core.Native\SiliconStudio.Core.Native.csproj">
+      <Project>{fcf36d39-bffe-4719-b245-05640ee34c5f}</Project>
+      <Name>SiliconStudio.Core.Native</Name>
+    </ProjectReference>
     <ProjectReference Include="..\SiliconStudio.Core\SiliconStudio.Core.csproj">
       <Project>{0e916ab7-5a6c-4820-8ab1-aa492fe66d68}</Project>
       <Name>SiliconStudio.Core</Name>

@@ -26,6 +26,7 @@ using namespace SiliconStudio::Xenko::Rendering;
 using namespace SiliconStudio::Xenko::Rendering::Materials;
 using namespace SiliconStudio::Xenko::Rendering::Materials::ComputeColors;
 using namespace SiliconStudio::Xenko::AssimpNet;
+using namespace SiliconStudio::Xenko::AssimpNet::Material;
 using namespace SiliconStudio::Xenko::Animations;
 using namespace SiliconStudio::Xenko::Engine;
 using namespace SiliconStudio::Xenko::Extensions;
@@ -656,23 +657,29 @@ private:
 		return skeleton;
 	}
 
-	Dictionary<String^, AnimationClip^>^ ProcessAnimation(const aiScene* scene)
+	AnimationInfo^ ProcessAnimation(const aiScene* scene)
 	{
-		auto animationClips = gcnew Dictionary<String^, AnimationClip^>();
+		auto animationData = gcnew AnimationInfo();
 		std::set<std::string> visitedNodeNames;
 
-		for (unsigned int i = 0; i < scene->mNumAnimations; ++i)
+		if (scene->mNumAnimations > 1)
+			Logger->Warning("There is {0} animations in this file, using only the first one.", scene->mNumAnimations,
+				CallerInfo::Get(__FILEW__, __FUNCTIONW__, __LINE__));
+
+		for (unsigned int i = 0; i < min(1, scene->mNumAnimations); ++i)
 		{
 			auto aiAnim = scene->mAnimations[i];
+
+			// animation speed
+			auto ticksPerSec = aiAnim->mTicksPerSecond;
+
+			animationData->Duration = aiTimeToXkTimeSpan(aiAnim->mDuration, ticksPerSec);
 
 			// Assimp animations have two different channels of animations ((1) on Nodes, (2) on Meshes).
 			// Nevertheless the second one do not seems to be usable in assimp 3.0 so it will be ignored here.
 
 			// name of the animation (dropped)
 			auto animName = aiStringToString(aiAnim->mName); // used only be the logger
-
-			// animation speed
-			auto ticksPerSec = aiAnim->mTicksPerSecond;
 
 			// animation using meshes (not supported)
 			for(unsigned int meshAnimId = 0; meshAnimId<aiAnim->mNumMeshChannels; ++meshAnimId)
@@ -690,7 +697,7 @@ private:
 				if (visitedNodeNames.find(nodeName) == visitedNodeNames.end())
 				{
 					visitedNodeNames.insert(nodeName);
-					ProcessNodeAnimation(animationClips, nodeAnim, ticksPerSec);
+					ProcessNodeAnimation(animationData->AnimationClips, nodeAnim, ticksPerSec);
 				}
 				else
 				{
@@ -700,13 +707,13 @@ private:
 				}
 			}
 		}
-		return animationClips;
+		return animationData;
 	}
 
-	ComputeTextureColor^ GetTextureReferenceNode(String^ vfsOutputPath, String^ sourceTextureFile, size_t textureUVSetIndex, Vector2 textureUVscaling, bool wrapTextureU, bool wrapTextureV, MaterialAsset^ finalMaterial, SiliconStudio::Core::Diagnostics::Logger^ logger)
+	ComputeTextureColor^ GetTextureReferenceNode(String^ vfsOutputPath, String^ sourceTextureFile, size_t textureUVSetIndex, Vector2 textureUVscaling, TextureAddressMode addressModeU, TextureAddressMode addressModeV, MaterialAsset^ finalMaterial, SiliconStudio::Core::Diagnostics::Logger^ logger)
 	{
 		// TODO: compare with FBX importer - see if there could be some conflict between texture names
-		auto textureValue = TextureLayerGenerator::GenerateMaterialTextureNode(vfsOutputPath, sourceTextureFile, textureUVSetIndex, textureUVscaling, wrapTextureU, wrapTextureV, Logger);
+		auto textureValue = TextureLayerGenerator::GenerateMaterialTextureNode(vfsOutputPath, sourceTextureFile, textureUVSetIndex, textureUVscaling, addressModeU, addressModeV, Logger);
 
 		auto attachedReference = AttachedReferenceManager::GetAttachedReference(textureValue->Texture);
 		auto referenceName = attachedReference->Url;
@@ -791,7 +798,7 @@ private:
 				auto realTop = (AssimpNet::Material::StackTexture^)top;
 				String ^texPath = realTop->texturePath;
 				int indexUV = realTop->channel;
-				auto textureValue = GetTextureReferenceNode(vfsOutputFilename, texPath, indexUV, Vector2::One, false, false, finalMaterial, Logger);
+				auto textureValue = GetTextureReferenceNode(vfsOutputFilename, texPath, indexUV, Vector2::One, ConvertTextureMode(realTop->mappingModeU), ConvertTextureMode(realTop->mappingModeV), finalMaterial, Logger);
 				curComposition = textureValue;
 			}
 			
@@ -845,6 +852,22 @@ private:
 		}
 
 		return rootMaterial;
+	}
+
+	static TextureAddressMode ConvertTextureMode(MappingMode mappingMode)
+	{
+		switch (mappingMode)
+		{
+		case MappingMode::Clamp:
+			return TextureAddressMode::Clamp;
+		case MappingMode::Decal:
+			return TextureAddressMode::Border;
+		case MappingMode::Mirror:
+			return TextureAddressMode::Mirror;
+		default:
+		case MappingMode::Wrap:
+			return TextureAddressMode::Wrap;
+		}
 	}
 
 	void BuildLayeredSurface(aiMaterial* pMat, bool hasBaseColor, bool hasBaseValue, Color4 baseColor, float baseValue, aiTextureType textureType, SiliconStudio::Xenko::Assets::Materials::MaterialAsset^ finalMaterial)
@@ -983,14 +1006,14 @@ private:
   //                  case sizeof(double):
   //                      {
 		//					auto value = *((double*)pProp->mData);
-//							ParameterKey<float>^ key = gcnew ParameterKey<float>(propertyName, 1);
+//							ValueParameterKey<float>^ key = gcnew ValueParameterKey<float>(propertyName, 1);
   //                          finalMaterial->SetParameter(key, (float)value);
   //                      }
   //                      break;
   //                  case 3*sizeof(double):
   //                      {
   //                          auto value = (double*)pProp->mData;
-//                            ParameterKey<Vector3>^ key = gcnew ParameterKey<Vector3>(propertyName, 1);
+//                            ValueParameterKey<Vector3>^ key = gcnew ValueParameterKey<Vector3>(propertyName, 1);
   //                          finalMaterial->SetParameter(key, Vector3((float)value[0], (float)value[1], (float)value[2]));
   //                      }
   //                      break;
@@ -1049,7 +1072,7 @@ private:
 		hasSpecPower = (AI_SUCCESS == pMaterial->Get(AI_MATKEY_SHININESS, specPower) && specPower > 0);
 		if(pMaterial->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS && opacity < 1.0)
 		{
-			finalMaterial->Parameters->Set(MaterialKeys::HasTransparency, true);
+			//finalMaterial->Parameters->Set(MaterialKeys::HasTransparency, true);
 			hasOpacity = true;
 		}
 
@@ -1371,8 +1394,6 @@ private:
 							nodeMeshData->Parameters->Set(MaterialKeys::HasSkinningPosition, true);
 						if (meshInfo->HasSkinningNormal)
 							nodeMeshData->Parameters->Set(MaterialKeys::HasSkinningNormal, true);
-						if (meshInfo->TotalClusterCount > 0)
-							nodeMeshData->Parameters->Set(MaterialKeys::SkinningBones, meshInfo->TotalClusterCount);
 					}
 					modelData->Meshes->Add(nodeMeshData);
 				}
@@ -1432,7 +1453,7 @@ private:
 	}
 
 public:
-	EntityInfo^ ExtractEntity(String^ inputFilename, String^ outputFilename)
+	EntityInfo^ ExtractEntity(String^ inputFilename, String^ outputFilename, bool extractTextureDependencies)
 	{
 		try
 		{
@@ -1451,7 +1472,8 @@ public:
 			GenerateNodeNames(scene, nodeNames);
 
 			auto entityInfo = gcnew EntityInfo();
-			entityInfo->TextureDependencies = ExtractTextureDependencies(scene);
+			if (extractTextureDependencies)
+				entityInfo->TextureDependencies = ExtractTextureDependencies(scene);
 			entityInfo->Materials = ExtractMaterials(scene, materialNames);
 			entityInfo->Models = ExtractModel(scene, meshNames, materialNames, nodeNames);
 			entityInfo->Nodes = ExtractNodeHierarchy(scene, nodeNames);
@@ -1482,7 +1504,7 @@ public:
 		return ConvertAssimpScene(scene);
 	}
 
-	Dictionary<String^, AnimationClip^>^ ConvertAnimation(String^ inputFilename, String^ outputFilename)
+	AnimationInfo^ ConvertAnimation(String^ inputFilename, String^ outputFilename)
 	{
 		// the importer is kept here since it owns the scene object.
 		Assimp::Importer importer;

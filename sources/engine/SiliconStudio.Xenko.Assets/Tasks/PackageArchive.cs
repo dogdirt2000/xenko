@@ -46,8 +46,14 @@ namespace SiliconStudio.Xenko.Assets.Tasks
                     NewFile(@"Bin\**\*.xml", "Bin", @"Bin\**\.*\**\*.xml"),
                     NewFile(@"Bin\**\*.usrdoc", "Bin", @"Bin\**\.*\**\*.usrdoc"),
                     NewFile(@"Bin\**\*.winmd", "Bin", @"Bin\**\.*\**\*.winmd"),
+                    NewFile(@"Bin\**\*.sh", "Bin", @"Bin\**\.*\**\*.sh"),
+                    NewFile(@"Bin\**\*.json", "Bin", @"Bin\**\.*\**\*.json"),
+                    NewFile(@"deps\AssemblyProcessor\*.exe", @"deps/AssemblyProcessor"),
+                    NewFile(@"deps\AssemblyProcessor\*.dll", @"deps/AssemblyProcessor"),
+                    NewFile(@"deps\CoreFX\**\*.*", @"deps\CoreFX"),
+                    NewFile($@"Bin\{mainPlatformDirectory}\ios-tcprelay\*.py",$@"Bin\{mainPlatformDirectory}\ios-tcprelay"),
                     NewFile(@"Targets\*.targets", "Targets"),
-                    NewFile($@"Bin\{mainPlatformDirectory}\SiliconStudio.*.pdb", $@"Bin\{mainPlatformDirectory}", @"Bin\**\SiliconStudio.Xenko.Importer*.pdb;Bin\**\SiliconStudio.Assets.Editor.pdb;Bin\**\SiliconStudio.Xenko.Assets.Presentation.pdb;Bin\**\SiliconStudio.Xenko.GameStudio*.pdb;Bin\**\SiliconStudio.Xenko.Assimp.Translation.pdb"),
+                    NewFile($@"Bin\{mainPlatformDirectory}\SiliconStudio.*.pdb", $@"Bin\{mainPlatformDirectory}", @"Bin\**\SiliconStudio.Xenko.Importer*.pdb;Bin\**\SiliconStudio.Xenko.Assimp.Translation.pdb"),
                 };
 
             // Handle Assets
@@ -64,11 +70,18 @@ namespace SiliconStudio.Xenko.Assets.Tasks
                     //files.Add(NewFile(source, target, @"**\*.cs;**\*.hlsl;**\*.csproj;**\*.csproj.user;**\obj\**"));
                     files.Add(NewFile(assetFolder.Path.MakeRelative(rootDir) + "/**/*.xksl", target));
                     files.Add(NewFile(assetFolder.Path.MakeRelative(rootDir) + "/**/*.xkfx", target));
+                    files.Add(NewFile(assetFolder.Path.MakeRelative(rootDir) + "/**/*.xkfnt", target));
                 }
 
                 var targetProfile = new PackageProfile(profile.Name);
                 targetProfile.AssetFolders.Add(new AssetFolder(target));
                 newPackage.Profiles.Add(targetProfile);
+            }
+
+            //Handle RootAssets
+            foreach (var rootAsset in package.RootAssets)
+            {
+                newPackage.RootAssets.Add(rootAsset);
             }
 
             // Handle templates

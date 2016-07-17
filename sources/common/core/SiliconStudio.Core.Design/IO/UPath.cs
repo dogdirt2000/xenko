@@ -20,18 +20,17 @@ namespace SiliconStudio.Core.IO
     /// </remarks>
     public abstract class UPath : IEquatable<UPath>, IComparable
     {
-        private readonly static HashSet<char> InvalidFileNameChars = new HashSet<char>(System.IO.Path.GetInvalidFileNameChars());
+        private static readonly HashSet<char> InvalidFileNameChars = new HashSet<char>(Path.GetInvalidFileNameChars());
 
-        private readonly string fullPath; // is always non-null
         private readonly int hashCode;
 
-        private readonly StringSpan driveSpan;
+        protected readonly StringSpan DriveSpan;
 
-        internal readonly StringSpan DirectorySpan;
+        protected readonly StringSpan DirectorySpan;
 
-        internal readonly StringSpan NameSpan;
+        protected readonly StringSpan NameSpan;
 
-        internal readonly StringSpan ExtensionSpan;
+        protected readonly StringSpan ExtensionSpan;
 
         /// <summary>
         /// The directory separator char '/' used to separate directory in an url. 
@@ -60,125 +59,66 @@ namespace SiliconStudio.Core.IO
         /// <param name="isDirectory">if set to <c>true</c> the filePath is considered as a directory and not a filename.</param>
         internal UPath(string filePath, bool isDirectory)
         {
-            if (!isDirectory && filePath != null && (filePath.EndsWith("/") || filePath.EndsWith(@"\")))
+            if (!isDirectory && filePath != null && (filePath.EndsWith(DirectorySeparatorString) || filePath.EndsWith(DirectorySeparatorStringAlt) || filePath.EndsWith(Path.VolumeSeparatorChar)))
             {
-                throw new ArgumentException("A file path cannot end with with directory char '\\' or '/' ");
+                throw new ArgumentException("A file path cannot end with with directory char '\\' or '/', or a volume separator ':'.");
             }
 
-            fullPath = Decode(filePath, isDirectory, out driveSpan, out DirectorySpan, out NameSpan, out ExtensionSpan);
-            hashCode = ComputeStringHashCodeCaseInsensitive(fullPath);
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="UPath" /> class.
-        /// </summary>
-        /// <param name="drive">The drive.</param>
-        /// <param name="directory">The directory.</param>
-        /// <param name="name">The name.</param>
-        /// <param name="extension">The extension.</param>
-        /// <exception cref="System.ArgumentException">Invalid DirectorySeparatorChar for name</exception>
-        internal UPath(string drive, string directory, string name, string extension)
-        {
-            var builder = new StringBuilder();
-            if (!string.IsNullOrWhiteSpace(drive))
-            {
-                builder.Append(drive);
-            }
-            if (!string.IsNullOrWhiteSpace(directory))
-            {
-                builder.Append(directory);
-                builder.Append(DirectorySeparatorChar);
-            }
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                builder.Append(name);
-            }
-            if (!string.IsNullOrWhiteSpace(extension))
-            {
-                builder.Append(extension);
-            }
-
-            fullPath = Decode(builder.ToString(), string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(extension), out this.driveSpan, out this.DirectorySpan, out this.NameSpan, out this.ExtensionSpan);
-            hashCode = ComputeStringHashCodeCaseInsensitive(fullPath);
+            FullPath = Decode(filePath, isDirectory, out DriveSpan, out DirectorySpan, out NameSpan, out ExtensionSpan);
+            hashCode = ComputeStringHashCodeCaseInsensitive(FullPath);
         }
 
         protected UPath(string fullPath, StringSpan driveSpan, StringSpan directorySpan)
         {
-            this.fullPath = fullPath;
-            this.hashCode = ComputeStringHashCodeCaseInsensitive(fullPath);
-            this.driveSpan = driveSpan;
-            this.DirectorySpan = directorySpan;
+            if (fullPath == null) throw new ArgumentNullException(nameof(fullPath));
+            FullPath = fullPath;
+            hashCode = ComputeStringHashCodeCaseInsensitive(fullPath);
+            DriveSpan = driveSpan;
+            DirectorySpan = directorySpan;
         }
 
         /// <summary>
         /// Gets the full path ((drive?)(directory?/)(name.ext?)). An empty path is an empty string.
         /// </summary>
         /// <value>The full path.</value>
-        public string FullPath
-        {
-            get
-            {
-                return fullPath;
-            }
-        }
+        /// <remarks>This property cannot be null.</remarks>
+        public string FullPath { get; }
 
         /// <summary>
         /// Gets a value indicating whether this instance has a <see cref="Drive"/> != null.
         /// </summary>
         /// <value><c>true</c> if this instance has drive; otherwise, <c>false</c>.</value>
-        public bool HasDrive
-        {
-            get
-            {
-                return driveSpan.IsValid;
-            }
-        }
-
-
-        /// <summary>
-        /// Gets the drive (contains the ':' if any), can be null.
-        /// </summary>
-        /// <returns>The drive.</returns>
-        public string GetDrive()
-        {
-            return driveSpan.IsValid ? fullPath.Substring(driveSpan) : null;
-        }
+        public bool HasDrive => DriveSpan.IsValid;
 
         /// <summary>
         /// Gets a value indicating whether this instance has a <see cref="GetDirectory()"/> != null;
         /// </summary>
         /// <value><c>true</c> if this instance has directory; otherwise, <c>false</c>.</value>
-        public bool HasDirectory
-        {
-            get
-            {
-                return DirectorySpan.IsValid;
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether this instance is a directory only path.
-        /// </summary>
-        /// <value><c>true</c> if this instance is directory only; otherwise, <c>false</c>.</value>
-        public bool IsDirectoryOnly
-        {
-            get
-            {
-                return FullPath == string.Empty || (HasDirectory && !IsFile);
-            }
-        }
+        public bool HasDirectory => !IsFile || NameSpan.Start > 0;
 
         /// <summary>
         /// Gets a value indicating whether this location is a relative location.
         /// </summary>
         /// <value><c>true</c> if this instance is relative; otherwise, <c>false</c>.</value>
-        public bool IsRelative
-        {
-            get
-            {
-                return !IsAbsolute;
-            }
-        }
+        public bool IsRelative => !IsAbsolute;
+
+        /// <summary>
+        /// Determines whether this instance is absolute.
+        /// </summary>
+        /// <returns><c>true</c> if this instance is absolute; otherwise, <c>false</c>.</returns>
+        public bool IsAbsolute => HasDrive || (DirectorySpan.IsValid && FullPath[DirectorySpan.Start] == DirectorySeparatorChar);
+
+        /// <summary>
+        /// Gets a value indicating whether this instance is a location to a file. Can be null.
+        /// </summary>
+        /// <value><c>true</c> if this instance is file; otherwise, <c>false</c>.</value>
+        public bool IsFile => NameSpan.IsValid || ExtensionSpan.IsValid;
+
+        /// <summary>
+        /// Gets the type of the path (absolute or relative).
+        /// </summary>
+        /// <value>The type of the path.</value>
+        public UPathType PathType => IsAbsolute ? UPathType.Absolute : UPathType.Relative;
 
         /// <summary>
         /// Indicates whether the specified <see cref="UPath"/> is null or empty.
@@ -187,26 +127,44 @@ namespace SiliconStudio.Core.IO
         /// <returns><c>true</c> if the value parameter is null or empty, otherwise <c>false</c>.</returns>
         public static bool IsNullOrEmpty(UPath path)
         {
-            return path == null || string.IsNullOrEmpty(path.FullPath);
+            return string.IsNullOrEmpty(path?.FullPath);
         }
 
         /// <summary>
-        /// Indicates whether the specified <see cref="UPath"/> is null, empty, or consists only of white-space characters.
+        /// Gets the drive (contains the ':' if any), can be null.
         /// </summary>
-        /// <param name="path">The path to test</param>
-        /// <returns><c>true</c> if the value parameter is null, empty, or consists only of white-space characters, otherwise <c>false</c>.</returns>
-        public static bool IsNullOrWhiteSpace(UPath path)
+        /// <returns>The drive.</returns>
+        public string GetDrive()
         {
-            return path == null || string.IsNullOrWhiteSpace(path.FullPath);
+            return DriveSpan.IsValid ? FullPath.Substring(DriveSpan) : null;
         }
 
         /// <summary>
-        /// Gets the directory. Can be null.
+        /// Gets the directory. Can be null. It won't contain the drive if one is specified.
         /// </summary>
         /// <returns>The directory.</returns>
+        [Obsolete("This method is obsolete. Use GetFullDirectory")]
         public string GetDirectory()
         {
-            return DirectorySpan.IsValid ? fullPath.Substring(DirectorySpan) : null;
+            if (DirectorySpan.IsValid)
+            {
+                // Case if we just have a directory without trailing '/' or just a '/', we keep it as is.
+                if ((FullPath[DirectorySpan.End] != DirectorySeparatorChar) || (DirectorySpan.Length == 1))
+                {
+                    return FullPath.Substring(DirectorySpan);
+                }
+                else
+                {
+                    return FullPath.Substring(DirectorySpan.Start, DirectorySpan.Length - 1);
+                }
+            } else if (DriveSpan.IsValid & (NameSpan.IsValid || ExtensionSpan.IsValid))
+            {
+                return "/";
+            }
+            else
+            {
+                return null;
+            }
         }
 
         /// <summary>
@@ -216,35 +174,50 @@ namespace SiliconStudio.Core.IO
         /// <returns>The parent directory or <see cref="UDirectory.Empty"/> if no directory found.</returns>
         public UDirectory GetParent()
         {
-            if (IsFile)
+            if (DirectorySpan.IsValid)
             {
-                if (DirectorySpan.IsValid)
+                // Find last index of '/' in this instance. When it has a File we know where the '/', so no need
+                // to look it up.
+                var index = IsFile ? DirectorySpan.End : FullPath.IndexOfReverse(DirectorySeparatorChar);
+                if (index >= 0)
                 {
-                    return new UDirectory(fullPath.Substring(0, DirectorySpan.Next), driveSpan, DirectorySpan);
+                    // We cannot remove the trailing '/' of a parent which is 'C:/' or '/'.
+                    index = (index == (DriveSpan.IsValid ? DriveSpan.Next : 0) ? index + 1 : index);
+                    return new UDirectory(FullPath.Substring(0, index), DriveSpan, new StringSpan(DirectorySpan.Start, index - DirectorySpan.Start));
                 }
-                if (driveSpan.IsValid)
-                {
-                    return new UDirectory(fullPath.Substring(driveSpan), driveSpan, new StringSpan());
-                }
-            } 
-            else if (DirectorySpan.IsValid)
+            }
+            return UDirectory.Empty;
+        }
+
+        /// <summary>
+        /// Decomposition of this instance in its subcomponents which are made of the drive if any,
+        /// the directories and the filename (including its extension).
+        /// </summary>
+        /// <returns>An IEnumerable of all the components of this instance.</returns>
+        public IReadOnlyCollection<string> GetComponents()
+        {
+            var list = new List<string>(FullPath.Count(pathItem => pathItem == DirectorySeparatorChar) + 1);
+            if (DriveSpan.IsValid)
             {
-                if (DirectorySpan.Length > 1)
+                list.Add(FullPath.Substring(DriveSpan));
+            }
+
+            if (DirectorySpan.IsValid && (DirectorySpan.Length >= 1))
+            {
+                foreach (var s in FullPath.Substring(DirectorySpan.Start, DirectorySpan.Length).Split(new char[1] { DirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries))
                 {
-                    var index = fullPath.IndexOfReverse(DirectorySeparatorChar);
-                    if (index >= 0)
-                    {
-                        index = index == 0 ? index + 1 : index;
-                        return new UDirectory(fullPath.Substring(0, index), driveSpan, new StringSpan(DirectorySpan.Start, index - DirectorySpan.Start));
-                    }
-                }
-                if (driveSpan.IsValid)
-                {
-                    return new UDirectory(fullPath.Substring(driveSpan), driveSpan, new StringSpan());
+                    list.Add(s);
                 }
             }
 
-            return UDirectory.Empty;
+            var file = this as UFile;
+            var fileName = file?.GetFileNameWithExtension();
+            if (fileName != null)
+            {
+                list.Add(fileName);
+            }
+
+            return list;
         }
 
         /// <summary>
@@ -253,56 +226,23 @@ namespace SiliconStudio.Core.IO
         /// <returns>System.String.</returns>
         public UDirectory GetFullDirectory()
         {
-            if (HasDirectory)
+            if (IsFile)
             {
-                var subPath = fullPath.Substring(0, DirectorySpan.Start + DirectorySpan.Length);
-                return new UDirectory(subPath, driveSpan, DirectorySpan);
+                // No directory in this path
+                if (NameSpan.Start == 0)
+                    return new UDirectory(null);
+                // This path only contains a leading '/', we should return it
+                if (NameSpan.Start == 1)
+                    return new UDirectory("/", DriveSpan, DirectorySpan);
+                // This path contains only 'c:/somefile', we should return 'c:/'
+                if (DriveSpan.IsValid && (DriveSpan.Next == NameSpan.Start - 1))
+                    return new UDirectory(FullPath.Substring(0, NameSpan.Start), DriveSpan, DirectorySpan);
+                
+               // Return the path until the name, excluding the last '/'
+               return new UDirectory(FullPath.Substring(0, NameSpan.Start - 1), DriveSpan, DirectorySpan);
             }
-
-            if (HasDrive)
-            {
-                var subPath = fullPath.Substring(0, driveSpan.Length);
-                return new UDirectory(subPath, driveSpan, DirectorySpan);
-            }
-
-            // TODO: Should we return null or an empty directory for this specific method?
-            return new UDirectory(string.Empty);
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether this instance is a location to a file. Can be null.
-        /// </summary>
-        /// <value><c>true</c> if this instance is file; otherwise, <c>false</c>.</value>
-        public bool IsFile
-        {
-            get
-            {
-                return NameSpan.IsValid || ExtensionSpan.IsValid;
-            }
-        }
-
-        /// <summary>
-        /// Determines whether this instance is absolute.
-        /// </summary>
-        /// <returns><c>true</c> if this instance is absolute; otherwise, <c>false</c>.</returns>
-        public bool IsAbsolute
-        {
-            get
-            {
-                return HasDrive || (HasDirectory && fullPath[DirectorySpan.Start] == DirectorySeparatorChar);
-            }
-        }
-
-        /// <summary>
-        /// Gets the type of the path (absolute or relative).
-        /// </summary>
-        /// <value>The type of the path.</value>
-        public UPathType PathType
-        {
-            get
-            {
-                return IsAbsolute ? UPathType.Absolute : UPathType.Relative;
-            }
+            // Either a directory or a null path
+            return this is UDirectory ? (UDirectory)this : new UDirectory(null);
         }
 
         public bool Equals(UPath other)
@@ -326,7 +266,7 @@ namespace SiliconStudio.Core.IO
 
         private static int ComputeStringHashCodeCaseInsensitive(string text)
         {
-            return text == null ? 0 : text.Aggregate(0, (current, t) => (current*397) ^ char.ToLowerInvariant(t));
+            return text.Aggregate(0, (current, t) => (current*397) ^ char.ToLowerInvariant(t));
         }
 
         public int CompareTo(object obj)
@@ -353,7 +293,7 @@ namespace SiliconStudio.Core.IO
         /// <returns>A string representation of this path in windows form.</returns>
         public string ToWindowsPath()
         {
-            return FullPath != null ? FullPath.Replace('/', '\\') : null;
+            return FullPath.Replace('/', '\\');
         }
 
         /// <summary>
@@ -386,8 +326,8 @@ namespace SiliconStudio.Core.IO
         /// <returns>The combination of both paths.</returns>
         public static T Combine<T>(UDirectory leftPath, T rightPath) where T : UPath
         {
-            if (leftPath == null) throw new ArgumentNullException("leftPath");
-            if (rightPath == null) throw new ArgumentNullException("rightPath");
+            if (leftPath == null) throw new ArgumentNullException(nameof(leftPath));
+            if (rightPath == null) throw new ArgumentNullException(nameof(rightPath));
 
             // If right path is absolute, return it directly
             if (rightPath.IsAbsolute)
@@ -395,11 +335,7 @@ namespace SiliconStudio.Core.IO
                 return rightPath;
             }
 
-            if (!leftPath.IsDirectoryOnly)
-            {
-                throw new ArgumentException("Expecting a directory", "leftPath");
-            }
-            var path = string.Format("{0}{1}{2}", leftPath.FullPath, string.IsNullOrEmpty(leftPath.FullPath) ? string.Empty : DirectorySeparatorString, rightPath.FullPath);
+            var path = $"{leftPath.FullPath}{(string.IsNullOrEmpty(leftPath.FullPath) ? string.Empty : DirectorySeparatorString)}{rightPath.FullPath}";
             return rightPath is UFile ? (T)(object)new UFile(path) : (T)(object)new UDirectory(path);
         }
 
@@ -410,7 +346,7 @@ namespace SiliconStudio.Core.IO
         /// <returns>A relative path of this instance to the anchor directory.</returns>
         public UPath MakeRelative(UDirectory anchorDirectory)
         {
-            if (anchorDirectory == null) throw new ArgumentNullException("anchorDirectory");
+            if (anchorDirectory == null) throw new ArgumentNullException(nameof(anchorDirectory));
 
             // If the toRelativize path is already relative, don't bother
             if (IsRelative)
@@ -419,9 +355,9 @@ namespace SiliconStudio.Core.IO
             }
 
             // If anchor directory is not absolute directory, throw an error
-            if (!anchorDirectory.IsAbsolute || !anchorDirectory.IsDirectoryOnly)
+            if (!anchorDirectory.IsAbsolute)
             {
-                throw new ArgumentException("Expecting an absolute directory", "anchorDirectory");
+                throw new ArgumentException(@"Expecting an absolute directory", nameof(anchorDirectory));
             }
 
             if (anchorDirectory.HasDrive != HasDrive)
@@ -486,7 +422,7 @@ namespace SiliconStudio.Core.IO
                 relativePath.Append(((UFile)absoluteFile).GetFileNameWithExtension());
             }
             var newPath = relativePath.ToString();
-            return IsDirectoryOnly ? (UPath)new UDirectory(newPath) : new UFile(newPath);
+            return !IsFile ? (UPath)new UDirectory(newPath) : new UFile(newPath);
         }
 
         /// <summary>
@@ -496,7 +432,7 @@ namespace SiliconStudio.Core.IO
         /// <returns>The result of the conversion.</returns>
         public static implicit operator string(UPath url)
         {
-            return url == null ? null : url.FullPath;
+            return url?.FullPath;
         }
 
         /// <summary>
@@ -534,7 +470,7 @@ namespace SiliconStudio.Core.IO
             var result = Normalize(pathToNormalize, out error);
             if (error != null)
             {
-                throw new ArgumentException(error, "pathToNormalize");
+                throw new ArgumentException(error, nameof(pathToNormalize));
             }
             return result.ToString();
         }
@@ -554,6 +490,18 @@ namespace SiliconStudio.Core.IO
             return Normalize(pathToNormalize, out drive, out directoryOrFileName, out fileName, out error);
         }
 
+        
+        /// <summary>
+        /// Possible state when normalizing a path.
+        /// </summary>
+		private enum NormalizationState
+        {
+            StartComponent,
+            InComponent,
+            VolumeSeparator,
+            DirectorySeparator
+        };
+
         /// <summary>
         /// Normalize a path by replacing '\' by '/' and transforming relative '..' or current path '.' to an absolute path. See remarks.
         /// </summary>
@@ -564,7 +512,7 @@ namespace SiliconStudio.Core.IO
         /// <param name="error">The error or null if no errors.</param>
         /// <returns>A normalized path or null if there is an error.</returns>
         /// <remarks>Unlike <see cref="System.IO.Path" /> , this doesn't make a path absolute to the actual file system.</remarks>
-        public unsafe static StringBuilder Normalize(string pathToNormalize, out StringSpan drive, out StringSpan directoryOrFileName, out StringSpan fileName, out string error)
+        public static unsafe StringBuilder Normalize(string pathToNormalize, out StringSpan drive, out StringSpan directoryOrFileName, out StringSpan fileName, out string error)
         {
             drive = new StringSpan();
             directoryOrFileName = new StringSpan();
@@ -577,7 +525,7 @@ namespace SiliconStudio.Core.IO
             }
             int countDirectories = pathToNormalize.Count(pathItem => pathItem == DirectorySeparatorChar ||
                                                                      pathItem == DirectorySeparatorCharAlt ||
-                                                                     pathItem == System.IO.Path.VolumeSeparatorChar);
+                                                                     pathItem == Path.VolumeSeparatorChar);
 
             // Safeguard if count directories is going wild
             if (countDirectories > 1024)
@@ -586,8 +534,10 @@ namespace SiliconStudio.Core.IO
                 return null;
             }
 
-            // Optimize the code by using stack alloc in order to avoid allocation of a List<CharRegion>()
-            int currentPath = 0;
+            // Optimize the code by using stack alloc in order to avoid allocation of a List<StringSpan>()
+            int currentPath = -1;
+            NormalizationState state = NormalizationState.StartComponent;
+            bool hasDriveSpan = false;
             var paths = stackalloc StringSpan[countDirectories + 1];
             var builder = new StringBuilder(pathToNormalize.Length);
 
@@ -598,73 +548,71 @@ namespace SiliconStudio.Core.IO
                 if (pathItem == DirectorySeparatorChar || pathItem == DirectorySeparatorCharAlt)
                 {
                     // Add only non consecutive '/'
-                    if (builder.Length == 0 || builder[builder.Length - 1] != DirectorySeparatorChar)
+                    if (state != NormalizationState.DirectorySeparator)
                     {
-                        // If '/' is the first char in the path, place the start at position 1 instead of 0
-                        if (builder.Length == 0)
+                        // Special case where path is starting with "/" or with "X:/", we will create 
+                        // an entry just for the "/".
+                        if ((state == NormalizationState.StartComponent) || (state == NormalizationState.VolumeSeparator))
                         {
-                            paths[0].Start = 1;
+                            currentPath++;
+                            paths[currentPath] = new StringSpan(builder.Length, 1);
                         }
-
-                        // if '/' is closing a '..' or '.', then handle them here and go to next char
-                        if (TrimParentAndSelfPath(builder, ref currentPath, paths, false))
+                        else
                         {
-                            continue;
+                            paths[currentPath].Length++;
                         }
-
-                        // If the root path is a drive, and we are trying to go its parent directory, return an error
-                        if (IsInvalidBacktrackOnDrive(builder, currentPath, paths))
-                        {
-                            error = "Cannot go to parent directory '..' with a root drive";
-                            return null;
-                        }
-
-                        // Append the directory '/' separator
                         builder.Append(DirectorySeparatorChar);
 
-                        // Stack a new path entry
-                        currentPath++;
-
-                        // Next entry start right after '/'
-                        paths[currentPath].Start = builder.Length;
+                        // We are either reading more directory separator or reading a new component.
+                        state = NormalizationState.DirectorySeparator;
                     }
                 }
-                else if (pathItem == System.IO.Path.VolumeSeparatorChar)
+                else if (pathItem == Path.VolumeSeparatorChar)
                 {
                     // Check in case of volume separator ':'
-                    if (IsDriveSpan(paths[0]))
+                    if (hasDriveSpan)
                     {
                         error = "Path contains more than one drive ':' separator";
                         return null;
                     }
 
-                    if (currentPath > 0)
+                    if (state == NormalizationState.DirectorySeparator)
                     {
                         error = "Path cannot contain a drive ':' separator after a backslash";
                         return null;
                     }
 
-                    if (builder.Length == 0)
+                   if (state == NormalizationState.StartComponent)
                     {
                         error = "Path cannot start with a drive ':' separator";
                         return null;
                     }
 
-                    // Append the volume ':' if no error
+                    // Append the volume ':'
                     builder.Append(pathItem);
+                    paths[currentPath].Length++;
+                    hasDriveSpan = true;
 
-                    // Update the path entry
-                    paths[0].Length = -paths[0].Length;  // Use of a negative length to identify a drive information
-
-                    // Next entry right after ':'
-                    paths[1].Start = builder.Length;
-                    currentPath = 1;
+                    state = NormalizationState.VolumeSeparator; // We are expecting to read a directory separator now
                 }
                 else if (!InvalidFileNameChars.Contains(pathItem))
                 {
-                    // If no invalid character, we can add the current character
+                    if (state == NormalizationState.VolumeSeparator)
+                    {
+                        error = @"Path must contain a separator '/' or '\' after the volume separator ':'";
+                        return null;
+                    }
+                    else if ((state == NormalizationState.StartComponent) || (state == NormalizationState.DirectorySeparator))
+                    {
+                        // We are starting a new component. Check if previous one is either '..' or '.', in which case
+                        // we can simplify
+                        TrimParentAndSelfPath(builder, ref currentPath, paths, hasDriveSpan, false);
+                        currentPath++;
+                        paths[currentPath] = new StringSpan(builder.Length, 0);
+                    }
                     builder.Append(pathItem);
                     paths[currentPath].Length++;
+                    state = NormalizationState.InComponent; // We are expecting to read either a character, a separator or a volume separator;
                 }
                 else
                 {
@@ -674,23 +622,13 @@ namespace SiliconStudio.Core.IO
                 }
             }
 
-            // Remove trailing '/'
-            RemoveTrailing(builder, DirectorySeparatorChar);
-
-            // Remove trailing '..'
-            if (TrimParentAndSelfPath(builder, ref currentPath, paths, true))
+            // Remove trailing '..' or '.'
+            TrimParentAndSelfPath(builder, ref currentPath, paths, hasDriveSpan, true);
+            // Remove trailing if and only if the path content is not "/" or "c:/".
+            if ((builder.Length > (hasDriveSpan ? paths[0].Next + 1 : 1)) && (builder[builder.Length - 1] == DirectorySeparatorChar))
             {
-                // Remove trailing '/'
-                RemoveTrailing(builder, DirectorySeparatorChar);
-            }
-            else
-            {
-                // If the root path is a drive, and we are trying to go its parent directory, return an error
-                if (IsInvalidBacktrackOnDrive(builder, currentPath, paths))
-                {
-                    error = "Cannot go to parent directory '..' with a root drive";
-                    return null;
-                }
+                builder.Length = builder.Length - 1;
+                paths[currentPath].Length--;
             }
 
             // Go back to upper path if current is not vaid
@@ -701,34 +639,30 @@ namespace SiliconStudio.Core.IO
 
             // Copy the drive, directory, filename information to the output
             int startDirectory = 0;
-            if (IsDriveSpan(paths[0]))
+            if (hasDriveSpan)
             {
                 drive = paths[0];
-                // Make sure to revert to a conventional span (as we use the negative value to identify a drive)
-                drive.Length = -drive.Length + 1;
                 startDirectory = 1;
             }
                 
             // If there is any directory information, process it
             if (startDirectory <= currentPath)
             {
-                directoryOrFileName.Start = paths[startDirectory].Start == 1 ? 0 : paths[startDirectory].Start;
+                directoryOrFileName.Start = paths[startDirectory].Start;
                 if (currentPath == startDirectory)
                 {
-                    directoryOrFileName.Length = paths[startDirectory].Length == 0 && paths[startDirectory].Start == 1
-                        ? 1
-                        : paths[startDirectory].Length;
+                    directoryOrFileName.Length = paths[startDirectory].Length;
                 }
                 else
                 {
-                    directoryOrFileName.Length = paths[currentPath - 1].Start + paths[currentPath - 1].Length - directoryOrFileName.Start;
+                    directoryOrFileName.Length = paths[currentPath - 1].Next - directoryOrFileName.Start;
 
                     if (paths[currentPath].IsValid)
                     {
                         // In case last path is a parent '..' don't include it in fileName
-                        if (IsParentPath(builder, paths[currentPath]))
+                        if (IsParentComponentPath(builder, paths[currentPath]))
                         {
-                            directoryOrFileName.Length += paths[currentPath].Length + 1;
+                            directoryOrFileName.Length += paths[currentPath].Length;
                         }
                         else
                         {
@@ -742,41 +676,34 @@ namespace SiliconStudio.Core.IO
             return builder;
         }
 
-        private static void RemoveTrailing(StringBuilder builder, char charToRemove)
+        /// <summary>
+        /// Does `builder.Substring(path)` represent either '..' or '../'?
+        /// </summary>
+        /// <param name="builder">String holding path.</param>
+        /// <param name="path">Span of component to compare against.</param>
+        /// <returns>True if it represents a parent directory.</returns>
+        private static bool IsParentComponentPath(StringBuilder builder, StringSpan path)
         {
-            if (builder.Length > 1 && builder[builder.Length - 1] == charToRemove)
+            if (((path.Length == 2) || (path.Length == 3)) && (builder[path.Start] == '.') && (builder[path.Start + 1] == '.'))
             {
-                builder.Length = builder.Length - 1;
+                return (path.Length == 2) || (builder[path.Start + 2] == DirectorySeparatorChar);
             }
+            return false;
         }
 
-        private static bool IsParentPath(StringBuilder builder, StringSpan path)
+        /// <summary>
+        /// Does `builder.Substring(path)` represent either '.' or './'?
+        /// </summary>
+        /// <param name="builder">String holding path.</param>
+        /// <param name="path">Span of component to compare against.</param>
+        /// <returns>True if it represents a parent directory.</returns>
+        private static bool IsRelativeCurrentComponentPath(StringBuilder builder, StringSpan path)
         {
-            return path.Length == 2 &&
-                   builder[path.Start] == '.' &&
-                   builder[path.Start + 1] == '.';
-        }
-
-        private static bool IsRelativeCurrentPath(StringBuilder builder, StringSpan path)
-        {
-            return path.Length == 1 && builder[path.Start] == '.';
-        }
-
-        private unsafe static bool IsInvalidBacktrackOnDrive(StringBuilder builder, int currentPath, StringSpan* paths)
-        {
-            // If the root path is a drive, and we are going to back slash, just don't
-            return currentPath > 0 && IsParentPath(builder, paths[currentPath]) && IsInvalidRelativeBacktrackOnDrive(currentPath, paths);
-        }
-
-        private static bool IsDriveSpan(StringSpan stringSpan)
-        {
-            return stringSpan.Length < 0;
-        }
-
-        private unsafe static bool IsInvalidRelativeBacktrackOnDrive(int currentPath, StringSpan* paths)
-        {
-            // If the root path is a drive, and we are going to back slash, just don't
-            return IsDriveSpan(paths[0]) && (currentPath == 1 || (currentPath == 2 && paths[1].Length == 0));
+            if (((path.Length == 1) || (path.Length == 2)) && (builder[path.Start] == '.'))
+            {
+                return (path.Length == 1) || (builder[path.Start + 1] == DirectorySeparatorChar);
+            }
+            return false;
         }
 
         /// <summary>
@@ -785,43 +712,57 @@ namespace SiliconStudio.Core.IO
         /// <param name="builder">The builder.</param>
         /// <param name="currentPath">The current path.</param>
         /// <param name="paths">The paths.</param>
+        /// <param name="hasDrivePath">Does path has a drive letter in it?</param>
         /// <param name="isLastTrim">if set to <c>true</c> is last trim to occur.</param>
-        /// <returns><c>true</c> if trim has been done, <c>false</c> otherwise.</returns>
-        private unsafe static bool TrimParentAndSelfPath(StringBuilder builder, ref int currentPath, StringSpan* paths, bool isLastTrim)
+        private static unsafe void TrimParentAndSelfPath(StringBuilder builder, ref int currentPath, StringSpan* paths, bool hasDrivePath, bool isLastTrim)
         {
+            if (currentPath < 0)
+                return;
+
             var path = paths[currentPath];
-            if (currentPath > 0 && IsParentPath(builder, path))
+            if (IsParentComponentPath(builder, path))
             {
-                // If the root path is a drive, and we are going to back slash, just don't
-                if (IsInvalidRelativeBacktrackOnDrive(currentPath, paths))
+                // If we have 2 or more components we can remove them but only if the
+                // previous path is not already a relative path.
+                if ((currentPath > 0) && !IsParentComponentPath(builder, paths[currentPath - 1]))
                 {
-                    return false;
+                    if (currentPath == 1)
+                    {
+                        // Case of just 'a/../' or '/../'
+                        if (paths[0].Length == 1)
+                        {
+                            currentPath = 0;
+                            paths[0].Length = 1;
+                        }
+                        else
+                        {
+                            // We are back to an empty path.
+                            currentPath = -1;
+                            builder.Length = 0;
+                            return;
+                        }
+                    }
+                    else if ((currentPath == 2) && hasDrivePath)
+                    {
+                        // Case of just 'c:/..' which becomes 'c:/'.
+                        currentPath--;
+                    }
+                    else
+                    {
+                        // Case of something like '.../a/b/../' => '.../a/'
+                        currentPath = currentPath - 2;
+                    }
+                    // The new length is where the last removed component started
+                    builder.Length = paths[currentPath + 1].Start;
                 }
-
-                // If previous path is already a relative path, then we probably can popup
-                var previousPath = paths[currentPath - 1];
-                if (IsParentPath(builder, previousPath))
-                {
-                    return false;
-                }
-
-                // We can popup the previous path
-                paths[currentPath] = new StringSpan();
+            }
+            else if (IsRelativeCurrentComponentPath(builder, path) && ((isLastTrim && currentPath > 0) || !isLastTrim))
+            {
+                // We do not need the current component, we starts from the parent if any (or no parent if !isLastTrim)
                 currentPath--;
-                paths[currentPath].Length = 0;
-                builder.Length = paths[currentPath].Start;
-                return true;
+                // The new length is where the last removed component started
+                builder.Length = paths[currentPath + 1].Start;
             }
-
-            var isRelativeCurrentPath = IsRelativeCurrentPath(builder, path);
-            if (!(isLastTrim && currentPath == 0 && isRelativeCurrentPath) && isRelativeCurrentPath)
-            {
-                // We can popup the previous path
-                paths[currentPath].Length = 0;
-                builder.Length = paths[currentPath].Start;
-                return true;
-            }
-            return false;
         }
 
         private static string Decode(string pathToNormalize, bool isPathDirectory, out StringSpan drive, out StringSpan directory, out StringSpan fileName, out StringSpan fileExtension)
@@ -850,8 +791,32 @@ namespace SiliconStudio.Core.IO
                 // If we are expecting a directory, merge the fileName with the directory
                 if (fileName.IsValid)
                 {
-                    directory.Length = directory.Length + 1 + fileName.Length;
+                    if (directory.IsValid)
+                    {
+                        // Case of '../file'
+                        directory.Length += fileName.Length;
+                    }
+                    else if (drive.IsValid)
+                    {
+                        // case of 'C:/file'
+                        directory.Start = drive.Next;
+                        directory.Length = fileName.Length + 1;
+                    }
+                    else
+                    {
+                        // Case of just a file 'file', make sure to include the leading '/' if there is one,
+                        // which is why we don't just do 'directory = fileName'.
+                        directory.Start = 0;
+                        directory.Length = fileName.Next;
+                    }
                     fileName = new StringSpan();
+                }
+                else if (drive.IsValid && !directory.IsValid)
+                { 
+                    // Case of just C:, we need to add a '/' to be a valid directory
+                    path.Append(DirectorySeparatorChar);
+                    directory.Start = drive.Next;
+                    directory.Length = 1;
                 }
             }
             else

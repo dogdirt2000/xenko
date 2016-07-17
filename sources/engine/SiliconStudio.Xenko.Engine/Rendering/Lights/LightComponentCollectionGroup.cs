@@ -1,10 +1,10 @@
 ﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-
 using SiliconStudio.Core;
 using SiliconStudio.Core.Collections;
 using SiliconStudio.Xenko.Engine;
@@ -57,8 +57,9 @@ namespace SiliconStudio.Xenko.Rendering.Lights
         /// <summary>
         /// Initializes a new instance of the <see cref="LightComponentCollectionGroup"/> class.
         /// </summary>
-        internal LightComponentCollectionGroup()
+        internal LightComponentCollectionGroup(Type lightType)
         {
+            LightType = lightType;
             lightCollectionPool = new PoolListStruct<LightComponentCollection>(32, LightComponentCollectionFactory);
             groupMasks = new uint[32 * 2];
             allLights = new List<LightComponent>(128);
@@ -132,6 +133,11 @@ namespace SiliconStudio.Xenko.Rendering.Lights
             }
         }
 
+        /// <summary>
+        /// Gets the light type this collection contains.
+        /// </summary>
+        public Type LightType { get; }
+
         internal unsafe void Clear()
         {
             allLights.Clear();
@@ -139,8 +145,8 @@ namespace SiliconStudio.Xenko.Rendering.Lights
             allMasks.Clear();
 
             fixed (void* ptr = groupMasks)
-                Interop.memset(ptr, 0, groupMasks.Length * sizeof(uint));
-            
+                Utilities.ClearMemory((IntPtr)ptr, 0, groupMasks.Length * sizeof(uint));
+
             // Only clear collections that were previously allocated (no need to iterate on all collections from the pool)
             foreach (var collection in lightCollectionPool)
             {

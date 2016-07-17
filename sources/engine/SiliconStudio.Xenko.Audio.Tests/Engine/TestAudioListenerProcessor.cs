@@ -59,7 +59,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         /// <summary>
         /// Check component data is correctly updated when the component is first added to the audio System and then to the Entity system.
         /// </summary>
-        [Test]
+        [Test, Ignore("TODO: UPDATE TO USE Scene and Graphics Composer")]
         public void TestAddAudioSysThenEntitySys()
         {
             TestUtilities.ExecuteScriptInUpdateLoop(TestAddAudioSysThenEntitySysSetup, EntityPositionUpdate, TestAddAudioSysThenEntitySysLoopImpl);
@@ -89,7 +89,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
 
         private void TestAddAudioSysThenEntitySysLoopImpl(Game game, int loopCount, int loopCountSum)
         {
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //var listenerProcessor = game.Entities.Processors.OfType<AudioListenerProcessor>().First();
 
             //if(loopCount == 1)
@@ -143,7 +143,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         /// <summary>
         /// Check component data is correctly updated when the component is first added to the Entity system and then to the audio System.
         /// </summary>
-        [Test]
+        [Test, Ignore("TODO: UPDATE TO USE Scene and Graphics Composer")]
         public void TestAddEntitySysThenAudioSys()
         {
             TestUtilities.ExecuteScriptInUpdateLoop(TestAddEntitySysThenAudioSysSetup, EntityPositionUpdate, TestAddEntitySysThenAudioSysLoopImpl);
@@ -156,14 +156,14 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
             
             listComp2Entity.Transform.RotationEulerXYZ = new Vector3((float)Math.PI / 2, 0, 0);
 
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             // game.Entities.Add(rootEntity);
         }
 
         private void TestAddEntitySysThenAudioSysLoopImpl(Game game, int loopCount, int loopCountSum)
         {
             var audio = game.Audio;
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //var listenerProcessor = game.Entities.Processors.OfType<AudioListenerProcessor>().First();
 
             //if (loopCount == 1)
@@ -245,7 +245,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         /// <summary>
         /// Check that <see cref="AudioEmitterComponent"/> are not updated anymore when removed from the audio system.
         /// </summary>
-        [Test]
+        [Test, Ignore("TODO: UPDATE TO USE Scene and Graphics Composer")]
         public void TestRemoveListenerFromAudioSystem()
         {
             TestUtilities.ExecuteScriptInUpdateLoop(AddListeners, EntityPositionUpdate, TestRemoveListenerFromAudioSystemLoopImpl);
@@ -263,14 +263,14 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
 
             listComp2Entity.Transform.RotationEulerXYZ = new Vector3((float)Math.PI / 2, 0, 0);
 
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //game.Entities.Add(rootEntity);
         }
 
         private void TestRemoveListenerFromAudioSystemLoopImpl(Game game, int loopCount, int loopCountSum)
         {
             var audio = game.Audio;
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //var listenerProcessor = game.Entities.Processors.OfType<AudioListenerProcessor>().First();
 
             //var list1Data = listenerProcessor.MatchingEntitiesForDebug[listComp1Entity];
@@ -324,7 +324,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         /// Check that <see cref="AudioListenerComponent"/> are removed from the matching list of the processor 
         /// when removed from the entity system and that <see cref="AudioListener"/> associated value is put to null in the <see cref="AudioSystem"/>.
         /// </summary>
-        [Test]
+        [Test, Ignore("TODO: UPDATE TO USE Scene and Graphics Composer")]
         public void TestRemoveListenerFromEntitySystem()
         {
             TestUtilities.ExecuteScriptInUpdateLoop(AddListeners, EntityPositionUpdate, TestRemoveListenerFromEntitySystemLoopImpl);
@@ -333,7 +333,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         private void TestRemoveListenerFromEntitySystemLoopImpl(Game game, int loopCount, int loopCountSum)
         {
             var audio = game.Audio;
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //var listenerProcessor = game.Entities.Processors.OfType<AudioListenerProcessor>().First();
 
             //var list1Data = listenerProcessor.MatchingEntitiesForDebug[listComp1Entity];
@@ -365,7 +365,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         /// Check that the <see cref="AudioListener"/> associated to the <see cref="AudioListenerComponent"/> are correctly updated
         /// when at least one of the <see cref="AudioEmitter"/> is added to the system.
         /// </summary>
-        [Test]
+        [Test, Ignore("TODO: UPDATE TO USE Scene and Graphics Composer")]
         public void TestEmitterUpdateValues()
         {
             TestUtilities.ExecuteScriptInDrawLoop(TestListenerUpdateValuesSetup, UpdateEntityPositionBfrUpdate, UpdateListenerTestValues);
@@ -380,7 +380,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
         {
             BuildEntityHierarchy();
             CreateAndComponentToEntities();
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //game.Entities.Add(rootEntity);
             game.Audio.AddListener(listComp1);
             game.Audio.AddListener(listComp2);
@@ -409,7 +409,7 @@ namespace SiliconStudio.Xenko.Audio.Tests.Engine
 
         private void UpdateListenerTestValues(Game game, int loopCount, int loopCountSum)
         {
-            throw new NotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
+            Internal.Refactor.ThrowNotImplementedException("TODO: UPDATE TO USE Scene and Graphics Composer"); 
             //var matchingEntities = game.Entities.Processors.OfType<AudioListenerProcessor>().First().MatchingEntitiesForDebug;
 
             //var dataComp1 = matchingEntities[listComp1Entity];

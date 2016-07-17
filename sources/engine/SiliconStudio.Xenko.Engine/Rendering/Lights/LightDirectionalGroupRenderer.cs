@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-
+using System.Diagnostics;
 using SiliconStudio.Core.Collections;
 using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Engine;
@@ -13,96 +13,82 @@ using SiliconStudio.Xenko.Shaders;
 
 namespace SiliconStudio.Xenko.Rendering.Lights
 {
-    public class LightDirectionalGroupRenderer : LightGroupRendererBase
+    public struct DirectionalLightData
     {
-        private const int StaticLightMaxCount = 8;
+        public Vector3 DirectionWS;
+        private float padding0;
+        public Color3 Color;
+        private float padding1;
+    }
 
-        private static readonly ShaderClassSource DynamicDirectionalGroupShaderSource = new ShaderClassSource("LightDirectionalGroup", StaticLightMaxCount);
-
-        public LightDirectionalGroupRenderer()
-        {
-            LightMaxCount = StaticLightMaxCount;
-            CanHaveShadows = true;
-        }
-
+    /// <summary>
+    /// Light renderer for <see cref="LightDirectional"/>.
+    /// </summary>
+    public class LightDirectionalGroupRenderer : LightGroupRendererDynamic
+    {
         public override void Initialize(RenderContext context)
         {
-            var isLowProfile = context.GraphicsDevice.Features.Profile < GraphicsProfile.Level_10_0;
-            LightMaxCount = isLowProfile ? 2 : StaticLightMaxCount;
-            AllocateLightMaxCount = !isLowProfile;
         }
 
-        public override LightShaderGroup CreateLightShaderGroup(string compositionName, int lightMaxCount, ILightShadowMapShaderGroupData shadowGroup)
+        public override LightShaderGroupDynamic CreateLightShaderGroup(RenderDrawContext context, ILightShadowMapShaderGroupData shadowGroup)
         {
-            var mixin = new ShaderMixinSource();
-            if (AllocateLightMaxCount)
-            {
-                mixin.Mixins.Add(DynamicDirectionalGroupShaderSource);
-            }
-            else
-            {
-                mixin.Mixins.Add(new ShaderClassSource("LightDirectionalGroup", lightMaxCount));
-                mixin.Mixins.Add(new ShaderClassSource("DirectLightGroupFixed", lightMaxCount));
-            }
-
-            if (shadowGroup != null)
-            {
-                shadowGroup.ApplyShader(mixin);
-            }
-
-            return new DirectionalLightShaderGroup(mixin, compositionName, shadowGroup);
+            return new DirectionalLightShaderGroup(context.RenderContext, shadowGroup);
         }
 
-        class DirectionalLightShaderGroup : LightShaderGroupAndDataPool<DirectionalLightShaderGroupData>
+        class DirectionalLightShaderGroup : LightShaderGroupDynamic
         {
-            internal readonly ParameterKey<int> CountKey;
-            internal readonly ParameterKey<Vector3[]> DirectionsKey;
-            internal readonly ParameterKey<Color3[]> ColorsKey;
+            private ValueParameterKey<int> countKey;
+            private ValueParameterKey<DirectionalLightData> lightsKey;
+            private FastListStruct<DirectionalLightData> lightsData = new FastListStruct<DirectionalLightData>(8);
 
-            public DirectionalLightShaderGroup(ShaderMixinSource mixin, string compositionName, ILightShadowMapShaderGroupData shadowGroupData)
-                : base(mixin, compositionName, shadowGroupData)
+            public DirectionalLightShaderGroup(RenderContext renderContext, ILightShadowMapShaderGroupData shadowGroupData)
+                : base(renderContext, shadowGroupData)
             {
-                CountKey = DirectLightGroupKeys.LightCount.ComposeWith(compositionName);
-                DirectionsKey = LightDirectionalGroupKeys.LightDirectionsWS.ComposeWith(compositionName);
-                ColorsKey = LightDirectionalGroupKeys.LightColor.ComposeWith(compositionName);
             }
 
-            protected override DirectionalLightShaderGroupData CreateData()
+            public override void UpdateLayout(string compositionName)
             {
-                return new DirectionalLightShaderGroupData(this, ShadowGroup);
-            }
-        }
-
-        class DirectionalLightShaderGroupData : LightShaderGroupData
-        {
-            private readonly ParameterKey<int> countKey;
-            private readonly ParameterKey<Vector3[]> directionsKey;
-            private readonly ParameterKey<Color3[]> colorsKey;
-            private readonly Vector3[] lightDirections;
-            private readonly Color3[] lightColors;
-
-            public DirectionalLightShaderGroupData(DirectionalLightShaderGroup group, ILightShadowMapShaderGroupData shadowGroupData)
-                : base(shadowGroupData)
-            {
-                countKey = group.CountKey;
-                directionsKey = group.DirectionsKey;
-                colorsKey = group.ColorsKey;
-
-                lightDirections = new Vector3[StaticLightMaxCount];
-                lightColors = new Color3[StaticLightMaxCount];
+                base.UpdateLayout(compositionName);
+                countKey = DirectLightGroupPerViewKeys.LightCount.ComposeWith(compositionName);
+                lightsKey = LightDirectionalGroupKeys.Lights.ComposeWith(compositionName);
             }
 
-            protected override void AddLightInternal(LightComponent light)
+            protected override void UpdateLightCount()
             {
-                lightDirections[Count] = light.Direction;
-                lightColors[Count] = light.Color;
+                base.UpdateLightCount();
+
+                var mixin = new ShaderMixinSource();
+                mixin.Mixins.Add(new ShaderClassSource("LightDirectionalGroup", LightCurrentCount));
+                // Old fixed path kept in case we need it again later
+                //mixin.Mixins.Add(new ShaderClassSource("LightDirectionalGroup", LightCurrentCount));
+                //mixin.Mixins.Add(new ShaderClassSource("DirectLightGroupFixed", LightCurrentCount));
+                ShadowGroup?.ApplyShader(mixin);
+
+                ShaderSource = mixin;
             }
 
-            protected override void ApplyParametersInternal(ParameterCollection parameters)
+            public override void ApplyViewParameters(RenderDrawContext context, int viewIndex, ParameterCollection parameters)
             {
-                parameters.Set(countKey, Count);
-                parameters.Set(directionsKey, lightDirections);
-                parameters.Set(colorsKey, lightColors);
+                CurrentLights.Clear();
+                var lightRange = LightRanges[viewIndex];
+                for (int i = lightRange.Start; i < lightRange.End; ++i)
+                    CurrentLights.Add(Lights[i]);
+
+                base.ApplyViewParameters(context, viewIndex, parameters);
+
+                foreach (var lightEntry in CurrentLights)
+                {
+                    var light = lightEntry.Light;
+                    lightsData.Add(new DirectionalLightData
+                    {
+                        DirectionWS = light.Direction,
+                        Color = light.Color,
+                    });
+                }
+
+                parameters.Set(countKey, lightsData.Count);
+                parameters.Set(lightsKey, lightsData.Count, ref lightsData.Items[0]);
+                lightsData.Clear();
             }
         }
     }

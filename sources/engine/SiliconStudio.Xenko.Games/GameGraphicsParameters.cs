@@ -73,7 +73,7 @@ namespace SiliconStudio.Xenko.Games
         /// <summary>
         ///   Gets or sets a value indicating the number of sample locations during multisampling.
         /// </summary>
-        public bool PreferMultiSampling;
+        public MSAALevel PreferredMultiSampleLevel;
 
         /// <summary>
         /// Gets or sets a value indicating whether to synochrnize present with vertical blanking.
@@ -84,5 +84,10 @@ namespace SiliconStudio.Xenko.Games
         /// Gets or sets the colorspace.
         /// </summary>
         public ColorSpace ColorSpace;
+
+        /// <summary>
+        /// If populated the engine will try to initialize the device with the same unique id
+        /// </summary>
+        public string RequiredAdapterUid;
     }
 }

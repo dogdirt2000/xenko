@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
+// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 //
 // Copyright (c) 2010-2013 SharpDX - Alexandre Mutel
@@ -26,6 +26,7 @@ using System.Collections.Generic;
 using System.Linq;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Core;
+using SiliconStudio.Core.Extensions;
 
 namespace SiliconStudio.Xenko.Games
 {
@@ -39,6 +40,8 @@ namespace SiliconStudio.Xenko.Games
 
         protected GameWindow gameWindow;
 
+        public string FullName { get; protected set; } = string.Empty;
+
         protected GamePlatform(GameBase game)
         {
             this.game = game;
@@ -50,14 +53,13 @@ namespace SiliconStudio.Xenko.Games
         {
 #if SILICONSTUDIO_PLATFORM_WINDOWS_RUNTIME
             return new GamePlatformWindowsRuntime(game);
-#elif SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP && SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGL
-            return new GamePlatformOpenTK(game);
 #elif SILICONSTUDIO_PLATFORM_ANDROID
             return new GamePlatformAndroid(game);
 #elif SILICONSTUDIO_PLATFORM_IOS
             return new GamePlatformiOS(game);
 #else
-            return new GamePlatformDesktop(game);
+            // Here we cover all Desktop variants: OpenTK, SDL, Winforms,...
+            return new GamePlatformWindows(game);
 #endif
         }
 
@@ -87,22 +89,16 @@ namespace SiliconStudio.Xenko.Games
             }
         }
 
-        internal abstract GameWindow[] GetSupportedGameWindows();
+        internal abstract GameWindow GetSupportedGameWindow(AppContextType type);
 
         public virtual GameWindow CreateWindow(GameContext gameContext)
         {
-            gameContext = gameContext ?? new GameContext();
-
-            var windows = GetSupportedGameWindows();
-
-            foreach (var gameWindowToTest in windows)
+            var window = GetSupportedGameWindow(gameContext.ContextType);
+            if (window != null)
             {
-                if (gameWindowToTest.CanHandle(gameContext))
-                {
-                    gameWindowToTest.Services = Services;
-                    gameWindowToTest.Initialize(gameContext);
-                    return gameWindowToTest;
-                }
+                window.Services = Services;
+                window.Initialize(gameContext);
+                return window;
             }
 
             throw new ArgumentException("Game Window context not supported on this platform");
@@ -115,7 +111,6 @@ namespace SiliconStudio.Xenko.Games
             gameWindow = CreateWindow(gameContext);
 
             // Register on Activated 
-            gameWindow.GameContext = gameContext;
             gameWindow.Activated += OnActivated;
             gameWindow.Deactivated += OnDeactivated;
             gameWindow.InitCallback = OnInitCallback;
@@ -254,9 +249,8 @@ namespace SiliconStudio.Xenko.Games
                 deviceInfo.PresentationParameters.BackBufferHeight = preferredParameters.PreferredBackBufferHeight;
             }
 
-            // TODO: Handle multisampling 
             deviceInfo.PresentationParameters.DepthStencilFormat = preferredParameters.PreferredDepthStencilFormat;
-            deviceInfo.PresentationParameters.MultiSampleCount = MSAALevel.None;
+            deviceInfo.PresentationParameters.MultiSampleLevel = preferredParameters.PreferredMultiSampleLevel;
 
             if (!graphicsDeviceInfos.Contains(deviceInfo))
             {
@@ -271,17 +265,16 @@ namespace SiliconStudio.Xenko.Games
             // Iterate on each adapter
             foreach (var graphicsAdapter in GraphicsAdapterFactory.Adapters)
             {
-                // Skip adapeters that don't have graphics output
-                if (graphicsAdapter.Outputs.Length == 0)
+                if (!preferredParameters.RequiredAdapterUid.IsNullOrEmpty() && graphicsAdapter.AdapterUid != preferredParameters.RequiredAdapterUid) continue;
+
+                // Skip adapeters that don't have graphics output 
+                // but only if no RequiredAdapterUid is provided (OculusVR at init time might be in a device with no outputs)
+                if (graphicsAdapter.Outputs.Length == 0 && preferredParameters.RequiredAdapterUid.IsNullOrEmpty())
                 {
                     continue;
                 }
 
                 var preferredGraphicsProfiles = preferredParameters.PreferredGraphicsProfile;
-
-                // INTEL workaround: it seems Intel driver doesn't support properly feature level 9.x. Fallback to 10.
-                if (graphicsAdapter.VendorId == 0x8086)
-                    preferredGraphicsProfiles = preferredGraphicsProfiles.Select(x => x < GraphicsProfile.Level_10_0 ? GraphicsProfile.Level_10_0 : x).ToArray();
 
                 // Iterate on each preferred graphics profile
                 foreach (var featureLevel in preferredGraphicsProfiles)
@@ -290,19 +283,19 @@ namespace SiliconStudio.Xenko.Games
                     if (graphicsAdapter.IsProfileSupported(featureLevel))
                     {
                         var deviceInfo = new GraphicsDeviceInformation
+                        {
+                            Adapter = graphicsAdapter,
+                            GraphicsProfile = featureLevel,
+                            PresentationParameters =
                             {
-                                Adapter = graphicsAdapter,
-                                GraphicsProfile = featureLevel,
-                                PresentationParameters =
-                                    {
-                                        MultiSampleCount = MSAALevel.None,
-                                        IsFullScreen = preferredParameters.IsFullScreen,
-                                        PreferredFullScreenOutputIndex = preferredParameters.PreferredFullScreenOutputIndex,
-                                        PresentationInterval = preferredParameters.SynchronizeWithVerticalRetrace ? PresentInterval.One : PresentInterval.Immediate,
-                                        DeviceWindowHandle = MainWindow.NativeWindow,
-                                        ColorSpace = preferredParameters.ColorSpace
-                                    }
-                            };
+                                MultiSampleLevel = preferredParameters.PreferredMultiSampleLevel,
+                                IsFullScreen = preferredParameters.IsFullScreen,
+                                PreferredFullScreenOutputIndex = preferredParameters.PreferredFullScreenOutputIndex,
+                                PresentationInterval = preferredParameters.SynchronizeWithVerticalRetrace ? PresentInterval.One : PresentInterval.Immediate,
+                                DeviceWindowHandle = MainWindow.NativeWindow,
+                                ColorSpace = preferredParameters.ColorSpace
+                            }
+                        };
 
                         var preferredMode = new DisplayMode(preferredParameters.PreferredBackBufferFormat,
                             preferredParameters.PreferredBackBufferWidth,
@@ -385,5 +378,14 @@ namespace SiliconStudio.Xenko.Games
             Resume = null;
             Suspend = null;
         }
+    }
+
+    internal abstract class GamePlatform<TK> : GamePlatform
+    {
+
+        protected GamePlatform(GameBase game) : base(game)
+        {
+        }
+
     }
 }

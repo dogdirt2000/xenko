@@ -125,7 +125,7 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
             }
         }
 
-        public override ShaderSource GenerateShaderSource(MaterialGeneratorContext context, MaterialComputeColorKeys baseKeys)
+        public override ShaderSource GenerateShaderSource(ShaderGeneratorContext context, MaterialComputeColorKeys baseKeys)
         {
             if (string.IsNullOrEmpty(MixinReference))
                 return new ShaderClassSource("ComputeColor");
@@ -353,9 +353,9 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
         /// <param name="key">The key of the variable.</param>
         /// <param name="value"></param>
         /// <param name="collection"></param>
-        private void AddToCollection<TValue>(ParameterKey key, TValue value, ParameterCollection collection)
+        private void AddToCollection<TValue>(ParameterKey key, TValue value, ParameterCollection collection) where TValue : struct
         {
-            var pk = key as ParameterKey<TValue>;
+            var pk = key as ValueParameterKey<TValue>;
             if (pk != null)
                 collection.Set(pk, value);
         }

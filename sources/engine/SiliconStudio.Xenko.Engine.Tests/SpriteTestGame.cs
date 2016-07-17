@@ -26,7 +26,7 @@ namespace SiliconStudio.Xenko.Engine.Tests
 
         private Vector2 areaSize;
 
-        private TransformComponent transfoComponent;
+        private TransformComponent transformComponent;
 
         private Vector2 ballSpeed = new Vector2(-300, -200);
 
@@ -48,36 +48,36 @@ namespace SiliconStudio.Xenko.Engine.Tests
             await base.LoadContent();
             
             // sets the virtual resolution
-            areaSize = new Vector2(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height);
+            areaSize = new Vector2(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height);
 
             // Creates the camera
             CameraComponent.UseCustomProjectionMatrix = true;
             CameraComponent.ProjectionMatrix = Matrix.OrthoRH(areaSize.X, areaSize.Y, -2, 2);
 
             // Load assets
-            groundSprites = Asset.Load<SpriteSheet>("GroundSprite");
-            ballSprite1 = Asset.Load<SpriteSheet>("BallSprite1");
-            ballSprite2 = Asset.Load<SpriteSheet>("BallSprite2");
-            ball = new Entity { new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = Asset.Load<SpriteSheet>("BallSprite1") } } };
+            groundSprites = Content.Load<SpriteSheet>("GroundSprite");
+            ballSprite1 = Content.Load<SpriteSheet>("BallSprite1");
+            ballSprite2 = Content.Load<SpriteSheet>("BallSprite2");
+            ball = new Entity { new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = Content.Load<SpriteSheet>("BallSprite1") } } };
 
             // create fore/background entities
             foreground = new Entity();
             background = new Entity();
-            foreground.Add(new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = groundSprites }, CurrentFrame = 1 });
-            background.Add(new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = groundSprites }, CurrentFrame = 0 });
+            foreground.Add(new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = groundSprites, CurrentFrame = 1 } });
+            background.Add(new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = groundSprites, CurrentFrame = 0 } });
 
             Scene.Entities.Add(ball);
             Scene.Entities.Add(foreground);
             Scene.Entities.Add(background);
 
-            spriteComponent = ball.Get(SpriteComponent.Key);
-            transfoComponent = ball.Get(TransformComponent.Key);
-            
+            spriteComponent = ball.Get<SpriteComponent>();
+            transformComponent = ball.Get<TransformComponent>();
+
             var decorationScalings = new Vector3(areaSize.X, areaSize.Y, 1);
-            background.Get(TransformComponent.Key).Scale = decorationScalings;
-            foreground.Get(TransformComponent.Key).Scale = decorationScalings/2;
-            background.Get(TransformComponent.Key).Position = new Vector3(0, 0, -1);
-            foreground.Get(TransformComponent.Key).Position = new Vector3(0, 0, 1);
+            background.Get<TransformComponent>().Scale = decorationScalings;
+            foreground.Get<TransformComponent>().Scale = decorationScalings/2;
+            background.Get<TransformComponent>().Position = new Vector3(0, 0, -1);
+            foreground.Get<TransformComponent>().Position = new Vector3(0, 0, 1);
 
             SpriteAnimation.Play(spriteComponent, 0, spriteComponent.SpriteProvider.SpritesCount-1, AnimationRepeatMode.LoopInfinite, 30);
         }
@@ -94,7 +94,9 @@ namespace SiliconStudio.Xenko.Engine.Tests
 
         private void SetSpriteImage(SpriteSheet sprite)
         {
-            spriteComponent.SpriteProvider = new SpriteFromSheet { Sheet = sprite };
+            // Keep the current frame when changing sprite provider
+            var currentFrame = spriteComponent.CurrentFrame;
+            spriteComponent.SpriteProvider = new SpriteFromSheet { Sheet = sprite, CurrentFrame = currentFrame };
         }
 
         protected override void Update(GameTime time)
@@ -110,31 +112,37 @@ namespace SiliconStudio.Xenko.Engine.Tests
                 SetSpriteImage(ballSprite2);
 
             if (Input.IsKeyDown(Keys.Space))
-                spriteComponent.CurrentFrame = 0;
+            {
+                var provider = spriteComponent.SpriteProvider as SpriteFromSheet;
+                Assert.IsNotNull(provider);
+                provider.CurrentFrame = 0;
+            }
         }
 
         private void SetFrameAndUpdateBall(int updateTimes, int frame)
         {
-            spriteComponent.CurrentFrame = frame;
+            var provider = spriteComponent.SpriteProvider as SpriteFromSheet;
+            Assert.IsNotNull(provider);
+            provider.CurrentFrame = frame;
 
-            for (int i = 0; i < updateTimes; i++)
+            for (var i = 0; i < updateTimes; i++)
                 UpdateBall(0.033f);
         }
 
         private void UpdateBall(float totalSeconds)
         {
-            const float RotationSpeed = (float)Math.PI / 2;
+            const float rotationSpeed = (float)Math.PI / 2;
 
-            var deltaRotation = RotationSpeed * totalSeconds;
+            var deltaRotation = rotationSpeed * totalSeconds;
 
-            transfoComponent.RotationEulerXYZ = new Vector3(0,0, transfoComponent.RotationEulerXYZ.Z + deltaRotation);
+            transformComponent.RotationEulerXYZ = new Vector3(0,0, transformComponent.RotationEulerXYZ.Z + deltaRotation);
 
-            var sprite = spriteComponent.SpriteProvider.GetSprite(spriteComponent.CurrentFrame);
+            var sprite = spriteComponent.SpriteProvider.GetSprite();
             var spriteSize = new Vector2(sprite.Region.Width, sprite.Region.Height);
 
             for (int i = 0; i < 2; i++)
             {
-                var nextPosition = transfoComponent.Position[i] + totalSeconds * ballSpeed[i];
+                var nextPosition = transformComponent.Position[i] + totalSeconds * ballSpeed[i];
 
                 var infBound = -areaSize[i] / 2 + sprite.Center[i];
                 var supBound =  areaSize[i] / 2 - sprite.Center[i];
@@ -149,7 +157,7 @@ namespace SiliconStudio.Xenko.Engine.Tests
                         nextPosition = infBound + (infBound - nextPosition);
                 }
 
-                transfoComponent.Position[i] = nextPosition;
+                transformComponent.Position[i] = nextPosition;
             }
         }
 

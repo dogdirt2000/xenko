@@ -5,9 +5,9 @@ namespace SiliconStudio.Xenko.Rendering.Shadows
     /// <summary>
     /// Performs variance filtering.
     /// </summary>
-    class ShadowMapFilterVsm : ShadowMapFilterBase
+    class ShadowMapFilterVsm<MemberName PerLighting> : ShadowMapFilterBase<PerLighting>
     {
-        cbuffer PerPass
+        cbuffer PerLighting
         {
             float BleedingFactor;
             float MinVariance;

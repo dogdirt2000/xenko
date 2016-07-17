@@ -18,7 +18,7 @@ namespace SiliconStudio.Xenko.Assets.Model
     {
         protected override void Compile(AssetCompilerContext context, string urlInStorage, UFile assetAbsolutePath, AnimationAsset asset, AssetCompilerResult result)
         {
-            if (!EnsureSourceExists(result, asset, assetAbsolutePath))
+            if (!EnsureSourcesExist(result, asset, assetAbsolutePath))
                 return;
 
             // Get absolute path of asset source on disk
@@ -100,7 +100,7 @@ namespace SiliconStudio.Xenko.Assets.Model
 
             protected override Task<ResultStatus> DoCommandOverride(ICommandContext commandContext)
             {
-                var assetManager = new AssetManager();
+                var assetManager = new ContentManager();
 
                 // Load source and base animations
                 var baseAnimation = assetManager.Load<AnimationClip>(AssetParameters.BaseUrl);

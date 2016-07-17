@@ -52,7 +52,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
 
         public ScrollViewerAnchorTest()
         {
-            CurrentVersion = 9;
+            CurrentVersion = 10;
         }
 
         protected override async Task LoadContent()
@@ -106,7 +106,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
                 Name = "Button at col " + col + " - row " + row,
                 MinimumHeight = minimumHeight,
                 MinimumWidth = minimumWidth,
-                Content = new TextBlock { Text = "Col " + col + " - Row " + row, Font = Asset.Load<SpriteFont>("MicrosoftSansSerif15"), TextAlignment = TextAlignment.Center}
+                Content = new TextBlock { Text = "Col " + col + " - Row " + row, Font = Content.Load<SpriteFont>("MicrosoftSansSerif15"), TextAlignment = TextAlignment.Center}
             };
 
             if (randomMinHeight)

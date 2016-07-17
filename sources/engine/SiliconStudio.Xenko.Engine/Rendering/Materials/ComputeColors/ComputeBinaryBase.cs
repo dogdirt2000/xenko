@@ -80,7 +80,7 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
         private const string BackgroundCompositionName = "color1";
         private const string ForegroundCompositionName = "color2";
 
-        public override ShaderSource GenerateShaderSource(MaterialGeneratorContext context, MaterialComputeColorKeys baseKeys)
+        public override ShaderSource GenerateShaderSource(ShaderGeneratorContext context, MaterialComputeColorKeys baseKeys)
         {
             var leftShaderSource = LeftChild.GenerateShaderSource(context, baseKeys);
             var rightShaderSource = RightChild.GenerateShaderSource(context, baseKeys);
@@ -171,6 +171,8 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
                     return "ComputeColorSubtract"; // "ComputeColorSubtract3ds" "ComputeColorSubtractMaya" //TODO: change this
                 case BinaryOperator.SubstituteAlpha:
                     return "ComputeColorSubstituteAlpha";
+                case BinaryOperator.Threshold:
+                    return "ComputeColorThreshold";
                 default:
                     throw new ArgumentOutOfRangeException("binaryOperand");
             }

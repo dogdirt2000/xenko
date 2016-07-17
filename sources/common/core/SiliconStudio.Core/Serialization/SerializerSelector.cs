@@ -70,10 +70,10 @@ namespace SiliconStudio.Core.Serialization
             Default = new SerializerSelector(false, true, "Default");
             Default.Initialize();
 
-            Asset = new SerializerSelector(false, true, "Default", "Asset");
+            Asset = new SerializerSelector(false, true, "Default", "Content");
             Asset.Initialize();
 
-            AssetWithReuse = new SerializerSelector(true, true, "Default", "Asset");
+            AssetWithReuse = new SerializerSelector(true, true, "Default", "Content");
             AssetWithReuse.Initialize();
         }
 
@@ -91,6 +91,25 @@ namespace SiliconStudio.Core.Serialization
 
         public SerializerSelector(params string[] profiles) : this(false, profiles)
         {
+        }
+
+
+        /// <summary>
+        /// Checks if this instance supports the specified serialization profile.
+        /// </summary>
+        /// <param name="profile">Name of the profile</param>
+        /// <returns><c>true</c> if this instance supports the specified serialization profile</returns>
+        public bool HasProfile(string profile)
+        {
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            for (int i = 0; i < profiles.Length; i++)
+            {
+                if (profile == profiles[i])
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private SerializerSelector(bool reuseReferences, bool unusedPrivateCtor, params string[] profiles)
@@ -124,6 +143,8 @@ namespace SiliconStudio.Core.Serialization
 
                 DataSerializer dataSerializer;
                 dataSerializersByTypeId.TryGetValue(typeId, out dataSerializer);
+                if (dataSerializer != null)
+                    EnsureInitialized(dataSerializer);
                 return dataSerializer;
             }
         }
@@ -142,7 +163,21 @@ namespace SiliconStudio.Core.Serialization
 
                 DataSerializer dataSerializer;
                 dataSerializersByType.TryGetValue(type, out dataSerializer);
+                if (dataSerializer != null)
+                    EnsureInitialized(dataSerializer);
                 return dataSerializer;
+            }
+        }
+
+        private void EnsureInitialized(DataSerializer dataSerializer)
+        {
+            if (!dataSerializer.Initialized)
+            {
+                // Mark it as initialized first (avoid infinite recursion)
+                dataSerializer.Initialized = true;
+
+                // Initialize (if necessary)
+                (dataSerializer as IDataSerializerInitializer)?.Initialize(this);
             }
         }
 
@@ -233,9 +268,6 @@ namespace SiliconStudio.Core.Serialization
                 var typeName = dataSerializer.SerializationType.FullName;
                 dataSerializer.SerializationTypeId = ObjectId.FromBytes(System.Text.Encoding.UTF8.GetBytes(typeName));
             }
-
-            if (dataSerializer is IDataSerializerInitializer)
-                ((IDataSerializerInitializer)dataSerializer).Initialize(this);
         }
     }
 }

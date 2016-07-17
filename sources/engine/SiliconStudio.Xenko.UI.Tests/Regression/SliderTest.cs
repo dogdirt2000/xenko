@@ -2,13 +2,13 @@
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
 using System.Threading.Tasks;
-
 using NUnit.Framework;
 
 using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Xenko.Input;
+using SiliconStudio.Xenko.Rendering.Sprites;
 using SiliconStudio.Xenko.UI.Controls;
 using SiliconStudio.Xenko.UI.Panels;
 
@@ -34,7 +34,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
         {
             await base.LoadContent();
 
-            sliderImages = Asset.Load<SpriteSheet>("DebugSlider");
+            sliderImages = Content.Load<SpriteSheet>("DebugSlider");
 
             slider = new Slider { TrackStartingOffsets = new Vector2(10, 6), TickOffset = 10 };
             SetSliderImages(isRotatedImages);
@@ -48,11 +48,11 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
         {
             var suffix = setRotatedImages ? "Rotated" : "";
 
-            slider.TrackBackgroundImage = sliderImages["Background" + suffix];
-            slider.TrackForegroundImage = sliderImages["Foreground" + suffix];
-            slider.ThumbImage= sliderImages["Thumb" + suffix];
-            slider.MouseOverThumbImage= sliderImages["ThumbOverred" + suffix];
-            slider.TickImage = sliderImages["Tick" + suffix];
+            slider.TrackBackgroundImage = SpriteFromSheet.Create(sliderImages, "Background" + suffix);
+            slider.TrackForegroundImage = SpriteFromSheet.Create(sliderImages, "Foreground" + suffix);
+            slider.ThumbImage = SpriteFromSheet.Create(sliderImages, "Thumb" + suffix);
+            slider.MouseOverThumbImage = SpriteFromSheet.Create(sliderImages, "ThumbOverred" + suffix);
+            slider.TickImage = SpriteFromSheet.Create(sliderImages, "Tick" + suffix);
         }
 
         private void ResetSliderImages()

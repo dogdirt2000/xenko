@@ -21,7 +21,7 @@ namespace SiliconStudio.Xenko.Graphics
     /// SpriteFont to use with <see cref="SpriteBatch"/>. See <see cref="SpriteFont"/> to learn how to use it.
     /// </summary>
     [DataContract]
-    [DataSerializerGlobal(typeof(ReferenceSerializer<SpriteFont>), Profile = "Asset")]
+    [DataSerializerGlobal(typeof(ReferenceSerializer<SpriteFont>), Profile = "Content")]
     public class SpriteFont : ComponentBase
     {
         public static readonly Logger Logger = GlobalLogger.GetLogger("SpriteFont");
@@ -41,6 +41,32 @@ namespace SiliconStudio.Xenko.Graphics
                                                                     new Vector2(0, 1),
                                                                     new Vector2(1, 1)
                                                                 };
+
+        [DataMember(0)]
+        internal float BaseOffsetY;
+
+        [DataMember(1)]
+        internal float DefaultLineSpacing;
+
+        [DataMember(2)]
+        internal Dictionary<int, float> KerningMap;
+
+        /// <summary>
+        /// The swizzle mode to use when drawing the sprite font.
+        /// </summary>
+        protected SwizzleMode Swizzle;
+
+        private FontSystem fontSystem;
+        private readonly GlyphAction<InternalDrawCommand> internalDrawGlyphAction;
+        private readonly GlyphAction<InternalUIDrawCommand> internalUIDrawGlyphAction;
+        private readonly GlyphAction<Vector2> measureStringGlyphAction;
+
+        internal SpriteFont()
+        {
+            internalDrawGlyphAction = InternalDrawGlyph;
+            internalUIDrawGlyphAction = InternalUIDrawGlyph;
+            measureStringGlyphAction = MeasureStringGlyph;
+        }
 
         /// <summary>
         /// Gets the textures containing the font character data.
@@ -80,26 +106,10 @@ namespace SiliconStudio.Xenko.Graphics
         public float ExtraLineSpacing { get; set; }
         
         /// <summary>
-        /// Gets a boolean indicating if the current font is dynamic or not.
+        /// Gets the type indicating if the current font is static, dynamic or SDF.
         /// </summary>
         [DataMemberIgnore]
-        public bool IsDynamic { get; protected set; }
-
-        [DataMember(0)]
-        internal float BaseOffsetY;
-
-        [DataMember(1)]
-        internal float DefaultLineSpacing;
-
-        [DataMember(2)]
-        internal Dictionary<int, float> KerningMap;
-
-        private FontSystem fontSystem;
-
-        /// <summary>
-        /// The swizzle mode to use when drawing the sprite font.
-        /// </summary>
-        protected SwizzleMode Swizzle;
+        public SpriteFontType FontType { get; protected set; }
 
         /// <summary>
         /// The <see cref="SiliconStudio.Xenko.Graphics.Font.FontSystem"/> that is managing this sprite font.
@@ -114,19 +124,13 @@ namespace SiliconStudio.Xenko.Graphics
                     return;
 
                 // unregister itself from the previous font system
-                if (fontSystem != null)
-                    fontSystem.AllocatedSpriteFonts.Remove(this);
+                fontSystem?.AllocatedSpriteFonts.Remove(this);
 
                 fontSystem = value;
 
                 // register itself to the new managing font system
-                if(fontSystem != null)
-                    fontSystem.AllocatedSpriteFonts.Add(this);
+                fontSystem?.AllocatedSpriteFonts.Add(this);
             }
-        }
-        
-        internal SpriteFont()
-        {
         }
 
         protected override void Destroy()
@@ -191,7 +195,7 @@ namespace SiliconStudio.Xenko.Graphics
             return GetExtraLineSpacing(fontSize) + GetFontDefaultLineSpacing(fontSize);
         }
         
-        internal void InternalDraw(ref StringProxy text, ref InternalDrawCommand drawCommand, TextAlignment alignment)
+        internal void InternalDraw(CommandList commandList, ref StringProxy text, ref InternalDrawCommand drawCommand, TextAlignment alignment)
         {
             // If the text is mirrored, offset the start position accordingly.
             if (drawCommand.SpriteEffects != SpriteEffects.None)
@@ -200,7 +204,7 @@ namespace SiliconStudio.Xenko.Graphics
             }
 
             // Draw each character in turn.
-            ForEachGlyph(ref text, ref drawCommand.FontSize, InternalDrawGlyph, ref drawCommand, alignment, true);
+            ForEachGlyph(commandList, ref text, ref drawCommand.FontSize, internalDrawGlyphAction, ref drawCommand, alignment, true);
         }        
         
         /// <summary>
@@ -219,7 +223,7 @@ namespace SiliconStudio.Xenko.Graphics
             
         }
 
-        internal void InternalDrawGlyph(ref InternalDrawCommand parameters, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx)
+        internal void InternalDrawGlyph(ref InternalDrawCommand parameters, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx, ref Vector2 auxiliaryScaling)
         {
             if (char.IsWhiteSpace((char)glyph.Character) || glyph.Subrect.Width == 0 || glyph.Subrect.Height == 0)
                 return;
@@ -243,32 +247,35 @@ namespace SiliconStudio.Xenko.Graphics
             parameters.SpriteBatch.DrawSprite(Textures[glyph.BitmapIndex], ref destination, true, ref sourceRectangle, parameters.Color, parameters.Rotation, ref offset, spriteEffects, ImageOrientation.AsIs, parameters.Depth, Swizzle, true);            
         }
 
-        internal void InternalUIDraw(ref StringProxy text, ref InternalUIDrawCommand drawCommand)
+        internal void InternalUIDraw(CommandList commandList, ref StringProxy text, ref InternalUIDrawCommand drawCommand)
         {
-            var fontSize = new Vector2(drawCommand.FontSize * drawCommand.FontScale.Y); // we don't want to have letters with non uniform ratio
-            var scaledSize = new Vector2(drawCommand.Size.X * drawCommand.FontScale.X, drawCommand.Size.Y * drawCommand.FontScale.Y);
-            ForEachGlyph(ref text, ref fontSize, InternalUIDrawGlyph, ref drawCommand, drawCommand.Alignment, true, scaledSize);
+            // We don't want to have letters with non uniform ratio
+            var requestedFontSize = new Vector2(drawCommand.RequestedFontSize * drawCommand.RealVirtualResolutionRatio.Y);
+
+            var textBoxSize = drawCommand.TextBoxSize * drawCommand.RealVirtualResolutionRatio;
+            ForEachGlyph(commandList, ref text, ref requestedFontSize, internalUIDrawGlyphAction, ref drawCommand, drawCommand.Alignment, true, textBoxSize);
         }
 
-        internal void InternalUIDrawGlyph(ref InternalUIDrawCommand parameters, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx)
+        internal void InternalUIDrawGlyph(ref InternalUIDrawCommand parameters, ref Vector2 requestedFontSize, ref Glyph glyph, float x, float y, float nextx, ref Vector2 auxiliaryScaling)
         {
             if (char.IsWhiteSpace((char)glyph.Character))
                 return;
 
             // Skip items with null size
-            var elementSize = new Vector2(glyph.Subrect.Width / parameters.FontScale.X, glyph.Subrect.Height / parameters.FontScale.Y);
+            var elementSize = new Vector2(auxiliaryScaling.X * glyph.Subrect.Width / parameters.RealVirtualResolutionRatio.X,
+                auxiliaryScaling.Y * glyph.Subrect.Height / parameters.RealVirtualResolutionRatio.Y);
             if (elementSize.Length() < MathUtil.ZeroTolerance) 
                 return;
 
             var xShift = x;
-            var yShift = y + GetBaseOffsetY(fontSize.Y) + glyph.Offset.Y;
+            var yShift = y + (GetBaseOffsetY(requestedFontSize.Y) + glyph.Offset.Y * auxiliaryScaling.Y);
             if (parameters.SnapText)
             {
                 xShift = (float)Math.Round(xShift);
                 yShift = (float)Math.Round(yShift);
             }
-            var xScaledShift = xShift / parameters.FontScale.X;
-            var yScaledShift = yShift / parameters.FontScale.Y;
+            var xScaledShift = xShift / parameters.RealVirtualResolutionRatio.X;
+            var yScaledShift = yShift / parameters.RealVirtualResolutionRatio.Y;
 
             var worldMatrix = parameters.Matrix;
             worldMatrix.M41 += worldMatrix.M11 * xScaledShift + worldMatrix.M21 * yScaledShift;
@@ -293,7 +300,8 @@ namespace SiliconStudio.Xenko.Graphics
         /// <returns>Vector2.</returns>
         public Vector2 MeasureString(string text)
         {
-            return MeasureString(text, new Vector2(Size, Size), text.Length);
+            var fontSize = new Vector2(Size, Size);
+            return MeasureString(text, fontSize, text.Length);
         }
 
         /// <summary>
@@ -303,7 +311,8 @@ namespace SiliconStudio.Xenko.Graphics
         /// <returns>Vector2.</returns>
         public Vector2 MeasureString(StringBuilder text)
         {
-            return MeasureString(text, new Vector2(Size, Size), text.Length);
+            var fontSize = new Vector2(Size, Size);
+            return MeasureString(text, fontSize, text.Length);
         }
 
         /// <summary>
@@ -406,7 +415,7 @@ namespace SiliconStudio.Xenko.Graphics
         public Vector2 MeasureString(string text, ref Vector2 fontSize, int length)
         {
             if (text == null)
-                throw new ArgumentNullException("text");
+                throw new ArgumentNullException(nameof(text));
 
             var proxy = new StringProxy(text, length);
             return MeasureString(ref proxy, ref fontSize);
@@ -422,7 +431,7 @@ namespace SiliconStudio.Xenko.Graphics
         public Vector2 MeasureString(StringBuilder text, ref Vector2 fontSize, int length)
         {
             if (text == null)
-                throw new ArgumentNullException("text");
+                throw new ArgumentNullException(nameof(text));
 
             var proxy = new StringProxy(text, length);
             return MeasureString(ref proxy, ref fontSize);
@@ -431,7 +440,7 @@ namespace SiliconStudio.Xenko.Graphics
         internal Vector2 MeasureString(ref StringProxy text, ref Vector2 size)
         {
             var result = Vector2.Zero;
-            ForEachGlyph(ref text, ref size, MeasureStringGlyph, ref result, TextAlignment.Left, false); // text size is independent from the text alignment
+            ForEachGlyph(null, ref text, ref size, measureStringGlyphAction, ref result, TextAlignment.Left, false); // text size is independent from the text alignment
             return result;
         }
 
@@ -448,17 +457,21 @@ namespace SiliconStudio.Xenko.Graphics
         /// <summary>
         /// Return the glyph associated to provided character at the given size.
         /// </summary>
+        /// <param name="commandList">The command list in case we upload gpu resources</param>
         /// <param name="character">The character we want the glyph of</param>
         /// <param name="fontSize">The font size in pixel</param>
         /// <param name="uploadGpuResources">Indicate if the GPU resource should be uploaded or not.</param>
+        /// <param name="auxiliaryScaling">If the requested font size isn't available, the closest one is chosen and an auxiliary scaling is returned</param>
         /// <returns>The glyph corresponding to the request or null if not existing</returns>
-        protected virtual Glyph GetGlyph(char character, ref Vector2 fontSize, bool uploadGpuResources)
+        protected virtual Glyph GetGlyph(CommandList commandList, char character, ref Vector2 fontSize, bool uploadGpuResources, out Vector2 auxiliaryScaling)
         {
+            auxiliaryScaling = new Vector2(1, 1);
             return null;
         }
         
-        private void MeasureStringGlyph(ref Vector2 result, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx)
+        private void MeasureStringGlyph(ref Vector2 result, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx, ref Vector2 auxiliaryScaling)
         {
+            // TODO Do we need auxiliaryScaling
             var h = y + GetTotalLineSpacing(fontSize.Y);
             if (nextx > result.X)
             {
@@ -470,9 +483,9 @@ namespace SiliconStudio.Xenko.Graphics
             }
         }
 
-        private delegate void GlyphAction<T>(ref T parameters, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx);
+        private delegate void GlyphAction<T>(ref T parameters, ref Vector2 fontSize, ref Glyph glyph, float x, float y, float nextx, ref Vector2 auxiliaryScaling);
 
-        private int FindCariageReturn(ref StringProxy text, int startIndex)
+        private static int FindCariageReturn(ref StringProxy text, int startIndex)
         {
             var index = startIndex;
 
@@ -482,17 +495,17 @@ namespace SiliconStudio.Xenko.Graphics
             return index;
         }
 
-        private void ForEachGlyph<T>(ref StringProxy text, ref Vector2 fontSize, GlyphAction<T> action, ref T parameters, TextAlignment scanOrder, bool updateGpuResources, Vector2? elementsize = null)
+        private void ForEachGlyph<T>(CommandList commandList, ref StringProxy text, ref Vector2 requestedFontSize, GlyphAction<T> action, ref T parameters, TextAlignment scanOrder, bool updateGpuResources, Vector2? textBoxSize = null)
         {
             if (scanOrder == TextAlignment.Left)
             {
                 // scan the whole text only one time following the text letter order
-                ForGlyph(ref text, ref fontSize, action, ref parameters, 0, text.Length, updateGpuResources);
+                ForGlyph(commandList, ref text, ref requestedFontSize, action, ref parameters, 0, text.Length, updateGpuResources);
             }
             else // scan the text line by line incrementing y start position
             {
                 // measure the whole string in order to be able to determine xStart
-                var wholeSize = elementsize ?? MeasureString(ref text, ref fontSize);
+                var wholeSize = textBoxSize ?? MeasureString(ref text, ref requestedFontSize);
 
                 // scan the text line by line
                 var yStart = 0f;
@@ -502,7 +515,7 @@ namespace SiliconStudio.Xenko.Graphics
                 {
                     // measure the size of the current line
                     var lineSize = Vector2.Zero;
-                    ForGlyph(ref text, ref fontSize, MeasureStringGlyph, ref lineSize, startIndex, endIndex, updateGpuResources);
+                    ForGlyph(commandList, ref text, ref requestedFontSize, MeasureStringGlyph, ref lineSize, startIndex, endIndex, updateGpuResources);
 
                     // Determine the start position of the line along the x axis
                     // We round this value to the closest integer to force alignment of all characters to the same pixels
@@ -512,24 +525,24 @@ namespace SiliconStudio.Xenko.Graphics
                     xStart = (float)Math.Round(xStart); 
 
                     // scan the line
-                    ForGlyph(ref text, ref fontSize, action, ref parameters, startIndex, endIndex, updateGpuResources, xStart, yStart);
+                    ForGlyph(commandList, ref text, ref requestedFontSize, action, ref parameters, startIndex, endIndex, updateGpuResources, xStart, yStart);
                     
                     // update variable before going to next line
-                    yStart += GetTotalLineSpacing(fontSize.Y);
+                    yStart += GetTotalLineSpacing(requestedFontSize.Y);
                     startIndex = endIndex + 1;
                     endIndex = FindCariageReturn(ref text, startIndex);
                 }
             }
         }
 
-        private void ForGlyph<T>(ref StringProxy text, ref Vector2 fontSize, GlyphAction<T> action, ref T parameters, int forStart, int forEnd, bool updateGpuResources, float startX = 0, float startY = 0)
+        private void ForGlyph<T>(CommandList commandList, ref StringProxy text, ref Vector2 fontSize, GlyphAction<T> action, ref T parameters, int forStart, int forEnd, bool updateGpuResources, float startX = 0, float startY = 0)
         {
             var key = 0;
             var x = startX;
             var y = startY;
             for (var i = forStart; i < forEnd; i++)
             {
-                char character = text[i];					
+                var character = text[i];					
 
                 switch (character)
                 {
@@ -547,22 +560,23 @@ namespace SiliconStudio.Xenko.Graphics
 
                     default:
                         // Output this character.
-                        var glyph = GetGlyph(character, ref fontSize, updateGpuResources);
+                        Vector2 auxiliaryScaling;
+                        var glyph = GetGlyph(commandList, character, ref fontSize, updateGpuResources, out auxiliaryScaling);
                         if (glyph == null && !IgnoreUnkownCharacters && DefaultCharacter.HasValue)
-                            glyph = GetGlyph(DefaultCharacter.Value, ref fontSize, updateGpuResources);
+                            glyph = GetGlyph(commandList, DefaultCharacter.Value, ref fontSize, updateGpuResources, out auxiliaryScaling);
                         if(glyph == null)
                             continue;
 
                         key |= character;
 
-                        float dx = glyph.Offset.X;
+                        var dx = glyph.Offset.X;
 
                         float kerningOffset;
                         if (KerningMap != null && KerningMap.TryGetValue(key, out kerningOffset))
                             dx += kerningOffset;
 
-                        float nextX = x + glyph.XAdvance + GetExtraSpacing(fontSize.X);
-                        action(ref parameters, ref fontSize, ref glyph, x + dx, y, nextX);
+                        float nextX = x + (glyph.XAdvance + GetExtraSpacing(fontSize.X)) * auxiliaryScaling.X;
+                        action(ref parameters, ref fontSize, ref glyph, x + dx * auxiliaryScaling.X, y, nextX, ref auxiliaryScaling);
                         x = nextX;
                         break;
                 }
@@ -575,8 +589,8 @@ namespace SiliconStudio.Xenko.Graphics
         [StructLayout(LayoutKind.Sequential)]
         internal struct StringProxy
         {
-            private string textString;
-            private StringBuilder textBuilder;
+            private readonly string textString;
+            private readonly StringBuilder textBuilder;
             public readonly int Length;
 
             public StringProxy(string text)
@@ -607,19 +621,9 @@ namespace SiliconStudio.Xenko.Graphics
                 Length = Math.Max(0, Math.Min(length, text.Length));
             }
 
-            public bool IsNull { get { return textString == null && textBuilder == null; } }
+            public bool IsNull => textString == null && textBuilder == null;
 
-            public char this[int index]
-            {
-                get
-                {
-                    if (textString != null)
-                    {
-                        return textString[index];
-                    }
-                    return textBuilder[index];
-                }
-            }
+            public char this[int index] => textString?[index] ?? textBuilder[index];
         }
 
         /// <summary>
@@ -664,15 +668,24 @@ namespace SiliconStudio.Xenko.Graphics
         /// </summary>
         internal struct InternalUIDrawCommand
         {
-            public float FontSize;
+            /// <summary>
+            /// Font size to be used for the draw command, as requested when the command was issued
+            /// </summary>
+            public float RequestedFontSize;
 
-            public Vector2 FontScale;
+            /// <summary>
+            /// The ratio between the real and virtual resolution (=real/virtual), inherited from the layouting context
+            /// </summary>
+            public Vector2 RealVirtualResolutionRatio;
 
             public UIBatch Batch;
 
             public Matrix Matrix;
 
-            public Vector2 Size;
+            /// <summary>
+            /// The size of the rectangle containing the text
+            /// </summary>
+            public Vector2 TextBoxSize;
 
             public Color Color;
 

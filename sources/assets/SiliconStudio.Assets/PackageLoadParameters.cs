@@ -106,6 +106,16 @@ namespace SiliconStudio.Assets
         public Func<Package, IList<PackageSession.PendingPackageUpgrade>, bool> PackageUpgradeRequested;
 
         /// <summary>
+        /// Occurs when an asset is about to be loaded, if false is returned the asset will be ignored and not loaded.
+        /// </summary>
+        public Func<PackageLoadingAssetFile, bool> TemporaryAssetFilter;
+
+        /// <summary>
+        /// Gets a boolean telling if MSBuild files should be evaluated when listing assets.
+        /// </summary>
+        public bool TemporaryAssetsInMsbuild { get; set; } = true;
+
+        /// <summary>
         /// Clones this instance.
         /// </summary>
         /// <returns>PackageLoadParameters.</returns>

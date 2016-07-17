@@ -10,30 +10,25 @@ namespace SiliconStudio.Assets
     [AttributeUsage(AttributeTargets.Class)]
     public class AssetDescriptionAttribute : Attribute
     {
-        private readonly string fileExtensions;
-        private readonly bool allowUserCreation;
-
         /// <summary>
         /// Initializes a new instance of the <see cref="AssetDescriptionAttribute"/> class.
         /// </summary>
         /// <param name="fileExtensions">The file extensions supported by a type of asset.</param>
-        /// <param name="allowUserCreation">Indicate whether this asset can be created by users using engine tools.</param>
-        public AssetDescriptionAttribute(string fileExtensions, bool allowUserCreation = true)
+        public AssetDescriptionAttribute(string fileExtensions)
         {
-            this.fileExtensions = fileExtensions;
-            this.allowUserCreation = allowUserCreation;
+            FileExtensions = fileExtensions;
         }
 
         /// <summary>
         /// Gets the file extensions supported by a type of asset.
         /// </summary>
         /// <value>The extension.</value>
-        public string FileExtensions { get { return fileExtensions; } }
+        public string FileExtensions { get; }
 
         /// <summary>
-        /// Gets whether this asset can be created by users using engine tools.
+        /// Gets whether this asset can be an archetype.
         /// </summary>
-        public bool AllowUserCreation { get { return allowUserCreation; } }
+        public bool AllowArchetype { get; set; } = true;
 
         /// <summary>
         /// Always mark this asset type as root.

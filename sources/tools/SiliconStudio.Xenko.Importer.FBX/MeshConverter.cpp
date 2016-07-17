@@ -118,8 +118,8 @@ internal:
 public:
 	MeshConverter(Logger^ Logger)
 	{
-		if(logger == nullptr)
-			logger = Core::Diagnostics::GlobalLogger::GetLogger("Importer FBX");
+		if(Logger == nullptr)
+			Logger = Core::Diagnostics::GlobalLogger::GetLogger("Importer FBX");
 
 		logger = Logger;
 		lSdkManager = NULL;
@@ -603,8 +603,6 @@ public:
 					meshData->Parameters->Set(MaterialKeys::HasSkinningPosition, true);
 				if (hasSkinningNormal)
 					meshData->Parameters->Set(MaterialKeys::HasSkinningNormal, true);
-				if (totalClusterCount > 0)
-					meshData->Parameters->Set(MaterialKeys::SkinningBones, totalClusterCount);
 			}
 			modelData->Meshes->Add(meshData);
 		}
@@ -1141,8 +1139,8 @@ public:
 		auto texturePath = FindFilePath(lFileTexture);
 		auto wrapModeU = lFileTexture->GetWrapModeU();
 		auto wrapModeV = lFileTexture->GetWrapModeV();
-		bool wrapTextureU = (wrapModeU == FbxTexture::EWrapMode::eRepeat);
-		bool wrapTextureV = (wrapModeV == FbxTexture::EWrapMode::eRepeat);
+		auto wrapTextureU = (wrapModeU == FbxTexture::EWrapMode::eRepeat) ? TextureAddressMode::Wrap : TextureAddressMode::Clamp;
+		auto wrapTextureV = (wrapModeV == FbxTexture::EWrapMode::eRepeat) ? TextureAddressMode::Wrap : TextureAddressMode::Clamp;
 		
 		ComputeTextureColor^ textureValue;
 		
@@ -1487,7 +1485,7 @@ private:
 		try
 		{
 			Initialize(inputFile, nullptr, ImportConfiguration::ImportAnimationsOnly());
-			auto animConverter = gcnew AnimationConverter(sceneMapping);
+			auto animConverter = gcnew AnimationConverter(logger, sceneMapping);
 			return animConverter->HasAnimationData();
 		}
 		finally
@@ -1869,16 +1867,17 @@ private:
 	}
 
 public:
-	EntityInfo^ ExtractEntity(String^ inputFileName)
+	EntityInfo^ ExtractEntity(String^ inputFileName, bool extractTextureDependencies)
 	{
 		try
 		{
 			Initialize(inputFileName, nullptr, ImportConfiguration::ImportEntityConfig());
 			
-			auto animationConverter = gcnew AnimationConverter(sceneMapping);
+			auto animationConverter = gcnew AnimationConverter(logger, sceneMapping);
 			
 			auto entityInfo = gcnew EntityInfo();
-			entityInfo->TextureDependencies = ExtractTextureDependenciesNoInit();
+			if (extractTextureDependencies)
+				entityInfo->TextureDependencies = ExtractTextureDependenciesNoInit();
 			entityInfo->AnimationNodes = animationConverter->ExtractAnimationNodesNoInit();
 			auto models = ExtractModelNoInit();
 			entityInfo->Models = models->Models;
@@ -1949,13 +1948,13 @@ public:
 		return nullptr;
 	}
 
-	Dictionary<System::String^, AnimationClip^>^ ConvertAnimation(String^ inputFilename, String^ vfsOutputFilename)
+	AnimationInfo^ ConvertAnimation(String^ inputFilename, String^ vfsOutputFilename)
 	{
 		try
 		{
 			Initialize(inputFilename, vfsOutputFilename, ImportConfiguration::ImportAnimationsOnly());
 
-			auto animationConverter = gcnew AnimationConverter(sceneMapping);
+			auto animationConverter = gcnew AnimationConverter(logger, sceneMapping);
 			return animationConverter->ProcessAnimation();
 		}
 		finally

@@ -31,7 +31,7 @@ namespace SiliconStudio.Presentation.View
         /// <param name="dispatcher">The dispatcher to use for this instance of <see cref="DispatcherService"/>.</param>
         public DispatcherService(Dispatcher dispatcher)
         {
-            if (dispatcher == null) throw new ArgumentNullException("dispatcher");
+            if (dispatcher == null) throw new ArgumentNullException(nameof(dispatcher));
             this.dispatcher = dispatcher;
         }
 
@@ -61,10 +61,43 @@ namespace SiliconStudio.Presentation.View
         }
 
         /// <inheritdoc/>
+        public Task LowPriorityInvokeAsync(Action callback)
+        {
+            var operation = dispatcher.InvokeAsync(callback, DispatcherPriority.ApplicationIdle);
+            return operation.Task;
+        }
+
+        /// <inheritdoc/>
         public Task<TResult> InvokeAsync<TResult>(Func<TResult> callback)
         {
             var operation = dispatcher.InvokeAsync(callback);
             return operation.Task;
+        }
+
+        /// <inheritdoc/>
+        public Task InvokeTask(Func<Task> task)
+        {
+            return InvokeTask(dispatcher, task);
+        }
+
+        /// <inheritdoc/>
+        public Task<TResult> InvokeTask<TResult>(Func<Task<TResult>> task)
+        {
+            return InvokeTask(dispatcher, task);
+        }
+
+        public static Task InvokeTask(Dispatcher dispatcher, Func<Task> task)
+        {
+            var tcs = new TaskCompletionSource<int>();
+            dispatcher.InvokeAsync(async () => { await task(); tcs.SetResult(0); });
+            return tcs.Task;
+        }
+
+        public static Task<TResult> InvokeTask<TResult>(Dispatcher dispatcher, Func<Task<TResult>> task)
+        {
+            var tcs = new TaskCompletionSource<TResult>();
+            dispatcher.InvokeAsync(async () => tcs.SetResult(await task()));
+            return tcs.Task;
         }
 
         /// <inheritdoc/>

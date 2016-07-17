@@ -4,6 +4,7 @@
 using System;
 
 using SiliconStudio.Core;
+using SiliconStudio.Core.Collections;
 using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Engine;
 using SiliconStudio.Xenko.Rendering.Lights;
@@ -19,9 +20,12 @@ namespace SiliconStudio.Xenko.Rendering.Shadows
     {
         void ApplyShader(ShaderMixinSource mixin);
 
-        void SetShadowMapShaderData(int index, ILightShadowMapShaderData shaderData);
+        void UpdateLayout(string compositionName);
+        void UpdateLightCount(int lightLastCount, int lightCurrentCount);
 
-        void ApplyParameters(ParameterCollection parameters);
+        void ApplyViewParameters(RenderDrawContext context, ParameterCollection parameters, FastListStruct<LightDynamicEntry> currentLights);
+
+        void ApplyDrawParameters(RenderDrawContext context, ParameterCollection parameters, FastListStruct<LightDynamicEntry> currentLights, ref BoundingBoxExt boundingBox);
     }
 
     [Flags]
@@ -53,8 +57,6 @@ namespace SiliconStudio.Xenko.Rendering.Shadows
     /// </summary>
     public class LightShadowMapTexture
     {
-        public delegate void ApplyShadowMapParametersDelegate(LightShadowMapTexture shadowMapTexture, ParameterCollection parameters);
-
         /// <summary>
         /// Initializes a new instance of the <see cref="LightShadowMapTexture" /> struct.
         /// </summary>
@@ -149,9 +151,11 @@ namespace SiliconStudio.Xenko.Rendering.Shadows
         // they are indirectly in `GetRectangle' and `SetRectangle' through pointer
         // arithmetics.
         private Rectangle Rectangle0;
+#pragma warning disable 169
         private Rectangle Rectangle1;
         private Rectangle Rectangle2;
         private Rectangle Rectangle3;
+#pragma warning restore 169
 
     }
 }

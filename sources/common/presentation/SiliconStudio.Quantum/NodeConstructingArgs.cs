@@ -18,10 +18,9 @@ namespace SiliconStudio.Quantum
         /// <param name="memberDescriptor">The member descriptor of the object being constructed if it is a member, or <c>null</c> otherwise.</param>
         public NodeConstructingArgs(ObjectDescriptor containerObjectDescriptor, MemberDescriptorBase memberDescriptor)
         {
-            if (containerObjectDescriptor == null) throw new ArgumentNullException("containerObjectDescriptor");
+            if (containerObjectDescriptor == null) throw new ArgumentNullException(nameof(containerObjectDescriptor));
             ContainerObjectDescriptor = containerObjectDescriptor;
             MemberDescriptor = memberDescriptor;
-            ShouldProcessReference = true;
         }
 
         /// <summary>
@@ -33,15 +32,5 @@ namespace SiliconStudio.Quantum
         /// Gets the member descriptor of the object being constructed if it is a member, or <c>null</c> otherwise.
         /// </summary>
         public MemberDescriptorBase MemberDescriptor { get; private set; }
-
-        /// <summary>
-        /// Gets or sets whether this node should be discarded (not constructed).
-        /// </summary>
-        public bool Discard { get; set; }
-
-        /// <summary>
-        /// Gets or sets whether the reference in this node (if existing) should be processed and expanded to a new node hierarchy.
-        /// </summary>
-        public bool ShouldProcessReference { get; set; }
     }
 }

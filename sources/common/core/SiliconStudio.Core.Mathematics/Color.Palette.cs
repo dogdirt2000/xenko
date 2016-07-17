@@ -2,9 +2,9 @@
 // This file is distributed under MIT License. See LICENSE.md for details.
 namespace SiliconStudio.Core.Mathematics
 {
-/// <summary>
-/// List of predefined <see cref="Color" />.
-/// </summary>
+    /// <summary>
+    /// List of predefined <see cref="Color" />.
+    /// </summary>
     public partial struct Color
     {
         /// <summary>
@@ -221,6 +221,11 @@ namespace SiliconStudio.Core.Mathematics
         /// DimGray color.
         /// </summary>
         public static readonly Color DimGray = Color.FromBgra(0xFF696969);
+
+        /// <summary>
+        /// VeryDimGray color.
+        /// </summary>
+        public static readonly Color VeryDimGray = Color.FromBgra(0xFF404040);
 
         /// <summary>
         /// DodgerBlue color.

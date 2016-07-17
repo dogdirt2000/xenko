@@ -34,6 +34,7 @@ namespace SiliconStudio.Xenko.Assets.Sprite
         protected override void Compile(AssetCompilerContext context, string urlInStorage, UFile assetAbsolutePath, SpriteSheetAsset asset, AssetCompilerResult result)
         {
             var gameSettingsAsset = context.GetGameSettingsAsset();
+            var renderingSettings = gameSettingsAsset.Get<RenderingSettings>(context.Platform);
 
             result.BuildSteps = new ListBuildStep();
             
@@ -83,14 +84,14 @@ namespace SiliconStudio.Xenko.Assets.Sprite
                     {
                         new TextureAssetCompiler.TextureConvertCommand(
                             textureUrl,
-                            new TextureConvertParameters(assetSource, textureAsset, context.Platform, context.GetGraphicsPlatform(), gameSettingsAsset.DefaultGraphicsProfile, gameSettingsAsset.TextureQuality, colorSpace))
+                            new TextureConvertParameters(assetSource, textureAsset, context.Platform, context.GetGraphicsPlatform(AssetItem.Package), renderingSettings.DefaultGraphicsProfile, gameSettingsAsset.Get<TextureSettings>().TextureQuality, colorSpace))
                     });
                 }
             }
 
             if (!result.HasErrors)
             {
-                var parameters = new SpriteSheetParameters(asset, imageToTextureUrl, context.Platform, context.GetGraphicsPlatform(), gameSettingsAsset.DefaultGraphicsProfile, gameSettingsAsset.TextureQuality, colorSpace);
+                var parameters = new SpriteSheetParameters(asset, imageToTextureUrl, context.Platform, context.GetGraphicsPlatform(AssetItem.Package), renderingSettings.DefaultGraphicsProfile, gameSettingsAsset.Get<TextureSettings>().TextureQuality, colorSpace);
                 result.BuildSteps.Add(new AssetBuildStep(AssetItem) { new SpriteSheetCommand(urlInStorage, parameters) });
             }
         }
@@ -117,7 +118,7 @@ namespace SiliconStudio.Xenko.Assets.Sprite
 
             protected override Task<ResultStatus> DoCommandOverride(ICommandContext commandContext)
             {
-                var assetManager = new AssetManager();
+                var assetManager = new ContentManager();
 
                 // Create atlas texture
                 Dictionary<SpriteInfo, PackedSpriteInfo> spriteToPackedSprite = null;
@@ -132,7 +133,7 @@ namespace SiliconStudio.Xenko.Assets.Sprite
                         return Task.FromResult(resultStatus);
                 }
 
-                var imageGroupData = new SpriteSheet { Sprites = new List<Graphics.Sprite>() };
+                var imageGroupData = new SpriteSheet();
 
                 // add the sprite data to the sprite list.
                 foreach (var image in AssetParameters.SheetAsset.Sprites)
@@ -196,7 +197,7 @@ namespace SiliconStudio.Xenko.Assets.Sprite
                     Texture texture = null;
                     if (textureUrl != null)
                     {
-                        texture = AttachedReferenceManager.CreateSerializableVersion<Texture>(Guid.Empty, textureUrl);
+                        texture = AttachedReferenceManager.CreateProxyObject<Texture>(Guid.Empty, textureUrl);
                     }
                     else
                     {
@@ -315,7 +316,7 @@ namespace SiliconStudio.Xenko.Assets.Sprite
                     }
 
                     // find the maximum texture size supported
-                    var maximumSize = TextureHelper.FindBestTextureSize(new TextureHelper.ImportParameters(AssetParameters), new Size2(int.MaxValue/2, int.MaxValue/2));
+                    var maximumSize = TextureHelper.FindMaximumTextureSize(new TextureHelper.ImportParameters(AssetParameters), new Size2(int.MaxValue/2, int.MaxValue/2));
 
                     // Initialize packing configuration from GroupAsset
                     var texturePacker = new TexturePacker

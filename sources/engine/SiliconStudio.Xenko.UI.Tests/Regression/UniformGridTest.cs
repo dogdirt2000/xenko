@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 
 using SiliconStudio.Xenko.Graphics;
+using SiliconStudio.Xenko.Rendering.Sprites;
 using SiliconStudio.Xenko.UI.Controls;
 using SiliconStudio.Xenko.UI.Panels;
 
@@ -31,7 +32,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
         {
             await base.LoadContent();
 
-            var imgElt = new ImageElement { Source = new Sprite(Asset.Load<Texture>("uv")), StretchType = StretchType.Fill };
+            var imgElt = new ImageElement { Source = (SpriteFromTexture)new Sprite(Content.Load<Texture>("uv")), StretchType = StretchType.Fill };
             imgElt.DependencyProperties.Set(GridBase.RowSpanPropertyKey, 2);
             imgElt.DependencyProperties.Set(GridBase.ColumnSpanPropertyKey, 2);
             imgElt.DependencyProperties.Set(GridBase.RowPropertyKey, 1);
@@ -48,7 +49,7 @@ namespace SiliconStudio.Xenko.UI.Tests.Regression
             var text = new TextBlock
             {
                 Text = "Test Uniform Grid", 
-                Font = Asset.Load<SpriteFont>("MicrosoftSansSerif15"), 
+                Font = Content.Load<SpriteFont>("MicrosoftSansSerif15"), 
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };

@@ -712,7 +712,7 @@ namespace SiliconStudio.BuildEngine
             }
 
             // Prepare data base directories
-            AssetManager.GetFileProvider = () => IndexFileCommand.DatabaseFileProvider;
+            ContentManager.GetFileProvider = () => IndexFileCommand.DatabaseFileProvider;
             var databasePathSplits = VirtualFileSystem.ApplicationDatabasePath.Split('/');
             var accumulatorPath = "/";
             foreach (var pathPart in databasePathSplits.Where(x => x != ""))
@@ -764,7 +764,7 @@ namespace SiliconStudio.BuildEngine
                     CollectContentReferenceDependencies(step, dependencies);
                 }
 
-                // If we have a ContentReference, we don't need to iterate further
+                // If we have a reference, we don't need to iterate further
                 return;
             }
 

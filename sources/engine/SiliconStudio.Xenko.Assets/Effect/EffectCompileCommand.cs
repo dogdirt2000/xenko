@@ -12,6 +12,8 @@ using SiliconStudio.Core;
 using SiliconStudio.Core.IO;
 using SiliconStudio.Core.Serialization;
 using SiliconStudio.Core.Serialization.Assets;
+using SiliconStudio.Xenko.Graphics;
+using SiliconStudio.Xenko.Rendering;
 using SiliconStudio.Xenko.Shaders;
 using SiliconStudio.Xenko.Shaders.Compiler;
 
@@ -20,7 +22,7 @@ namespace SiliconStudio.Xenko.Assets.Effect
     /// <summary>
     /// This command is responsible to compile a single permutation of an effect (xkfx or xksl)
     /// </summary>
-    internal class EffectCompileCommand : IndexFileCommand
+    internal sealed class EffectCompileCommand : IndexFileCommand
     {
         private static readonly PropertyKey<EffectCompilerBase> CompilerKey = new PropertyKey<EffectCompilerBase>("CompilerKey", typeof(EffectCompileCommand));
 
@@ -49,6 +51,7 @@ namespace SiliconStudio.Xenko.Assets.Effect
             writer.Serialize(ref effectbyteCodeMagicNumber, ArchiveMode.Serialize);
             writer.Serialize(ref effectName, ArchiveMode.Serialize);
             writer.Serialize(ref compilerParameters, ArchiveMode.Serialize);
+            writer.Serialize(ref compilerParameters.EffectParameters, ArchiveMode.Serialize);
         }
 
         protected override void ComputeAssemblyHash(BinarySerializationWriter writer)
@@ -72,7 +75,7 @@ namespace SiliconStudio.Xenko.Assets.Effect
                 permutationCount++;
                 PermutationCount[effectName] = permutationCount;
             }
-            commandContext.Logger.Verbose("Trying permutation #{0} for effect [{1}]: \n{2}", permutationCount, effectName, compilerParameters.ToStringDetailed());
+            commandContext.Logger.Verbose("Trying permutation #{0} for effect [{1}]: \n{2}", permutationCount, effectName, compilerParameters.ToStringPermutationsDetailed());
 
             var compilerResults = compiler.Compile(source, compilerParameters);
 
@@ -113,7 +116,7 @@ namespace SiliconStudio.Xenko.Assets.Effect
                     }
                 }
 
-                var outputClassFile = effectName + "." + fieldName + "." + compilerParameters.Platform + "." + compilerParameters.Profile + ".cs";
+                var outputClassFile = effectName + "." + fieldName + "." + compilerParameters.EffectParameters.Platform + "." + compilerParameters.EffectParameters.Profile + ".cs";
                 var fullOutputClassFile = Path.Combine(outputDirectory.ToWindowsPath(), outputClassFile);
 
                 commandContext.Logger.Verbose("Writing shader bytecode to .cs source [{0}]", fullOutputClassFile);
@@ -139,7 +142,7 @@ namespace SiliconStudio.Xenko.Assets.Effect
                     // Create compiler
                     var effectCompiler = new Shaders.Compiler.EffectCompiler();
                     effectCompiler.SourceDirectories.Add(EffectCompilerBase.DefaultSourceShaderFolder);
-                    compiler = new EffectCompilerCache(effectCompiler);
+                    compiler = new EffectCompilerCache(effectCompiler) { CurrentCache = EffectBytecodeCacheLoadSource.StartupCache };
                     context.Properties.Set(CompilerKey, compiler);
 
                     var shaderLocations = context.Properties.Get(EffectShaderAssetCompiler.ShaderLocationsKey);
@@ -157,6 +160,15 @@ namespace SiliconStudio.Xenko.Assets.Effect
 
                 return compiler;
             }
+        }
+
+        public static BuildStep FromRequest(AssetCompilerContext context, Package package, UDirectory urlRoot, EffectCompileRequest effectCompileRequest)
+        {
+            var compilerParameters = new CompilerParameters(effectCompileRequest.UsedParameters);
+            compilerParameters.EffectParameters.Platform = context.GetGraphicsPlatform(package);
+            compilerParameters.EffectParameters.Profile = context.GetGameSettingsAsset().Get<RenderingSettings>(context.Platform).DefaultGraphicsProfile;
+            compilerParameters.EffectParameters.ApplyCompilationMode(context.GetCompilationMode());
+            return new CommandBuildStep(new EffectCompileCommand(context, urlRoot, effectCompileRequest.EffectName, compilerParameters, package));
         }
     }
 }

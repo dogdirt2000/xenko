@@ -73,13 +73,13 @@ namespace SiliconStudio.Xenko.Input.Tests
         {
             await base.LoadContent();
 
-            font = Asset.Load<SpriteFont>("Font");
-            teapot = Asset.Load<Model>("Teapot");
+            font = Content.Load<SpriteFont>("Font");
+            teapot = Content.Load<Model>("Teapot");
             batch = new SpriteBatch(GraphicsDevice);
 
             BuildUI();
 
-            spriteComponent = new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = Asset.Load<SpriteSheet>("SpriteSheet") } };
+            spriteComponent = new SpriteComponent { SpriteProvider = new SpriteFromSheet { Sheet = Content.Load<SpriteSheet>("SpriteSheet") } };
             modelComponent = new ModelComponent { Model = teapot };
             modelComponent2 = new ModelComponent { Model = teapot };
             modelComponent3 = new ModelComponent { Model = teapot };
@@ -115,7 +115,7 @@ namespace SiliconStudio.Xenko.Input.Tests
         {
             var width = 400;
             var bufferRatio = GraphicsDevice.Presenter.BackBuffer.Width / (float)GraphicsDevice.Presenter.BackBuffer.Height;
-            var ui = new UIComponent { VirtualResolution = new Vector3(width, width / bufferRatio, 500) };
+            var ui = new UIComponent { Resolution = new Vector3(width, width / bufferRatio, 500) };
             SceneSystem.SceneInstance.Scene.Entities.Add(new Entity { ui });
 
             currentText = new TextBlock { Font = font, TextColor = Color.White, VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Center };
@@ -150,6 +150,7 @@ namespace SiliconStudio.Xenko.Input.Tests
             entity.Transform.UseTRS = true;
             entity2.Transform.UseTRS = false;
 
+            var provider = spriteComponent.SpriteProvider as SpriteFromSheet;
             switch (currentScene)
             {
                 case DebugScenes.Orientation:
@@ -168,7 +169,8 @@ namespace SiliconStudio.Xenko.Input.Tests
                     entity.Transform.UseTRS = false;
                     spriteComponent.Enabled = true;
                     spriteComponent.Color = sceneToColor[currentScene];
-                    spriteComponent.CurrentFrame = 0;
+                    if (provider != null)
+                        provider.CurrentFrame = 0;
                     break;
                 case DebugScenes.Gyroscope:
                     entity.Transform.Scale = new Vector3(0.5f);
@@ -178,7 +180,8 @@ namespace SiliconStudio.Xenko.Input.Tests
                 case DebugScenes.Compass:
                     spriteComponent.Enabled = true;
                     spriteComponent.Color = Color.Red;
-                    spriteComponent.CurrentFrame = 0;
+                    if (provider != null)
+                        provider.CurrentFrame = 0;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -262,11 +265,11 @@ namespace SiliconStudio.Xenko.Input.Tests
                 currentYawPitchRoww = new Vector3(Input.Orientation.Yaw, Input.Orientation.Pitch, Input.Orientation.Roll);
             }
 
-            GraphicsDevice.Clear(GraphicsDevice.DepthStencilBuffer, DepthStencilClearOptions.DepthBuffer);
+            GraphicsContext.CommandList.Clear(GraphicsDevice.Presenter.DepthStencilBuffer, DepthStencilClearOptions.DepthBuffer);
 
-            var targetSize = new Vector2(GraphicsDevice.BackBuffer.Width, GraphicsDevice.BackBuffer.Height);
+            var targetSize = new Vector2(GraphicsDevice.Presenter.BackBuffer.Width, GraphicsDevice.Presenter.BackBuffer.Height);
 
-            batch.Begin();
+            batch.Begin(GraphicsContext);
 
             var position = new Vector2(0.005f, 0.01f);
             var text = "Acceleration[{0}]=({1:0.00})".ToFormat(Input.Accelerometer.IsEnabled ? "E" : "D", currentAcceleration);

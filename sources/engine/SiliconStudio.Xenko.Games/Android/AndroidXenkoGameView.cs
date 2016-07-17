@@ -2,17 +2,13 @@
 // This file is distributed under GPL v3. See LICENSE.md for details.
 #if SILICONSTUDIO_PLATFORM_ANDROID
 using System;
-using System.Text.RegularExpressions;
-using Android.App;
 using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Xenko.Graphics.OpenGL;
 using Android.Content;
-using Android.Content.PM;
-using Android.Runtime;
-using Javax.Microedition.Khronos.Egl;
 using OpenTK.Graphics;
-using OpenTK.Graphics.ES30;
 using OpenTK.Platform.Android;
+using OpenTK.Graphics.ES30;
+using SiliconStudio.Xenko.Data;
 using PixelFormat = SiliconStudio.Xenko.Graphics.PixelFormat;
 
 namespace SiliconStudio.Xenko.Games.Android
@@ -42,19 +38,17 @@ namespace SiliconStudio.Xenko.Games.Android
         /// The requested graphics profiles.
         /// </value>
         public GraphicsProfile[] RequestedGraphicsProfile { get; set; }
-        
+
         public override void Pause()
         {
             base.Pause();
 
             var handler = OnPause;
-            if (handler != null)
-                handler(this, EventArgs.Empty);
+            handler?.Invoke(this, EventArgs.Empty);
         }
 
         protected override void CreateFrameBuffer()
         {
-            int requestedStencil = 0;
             ColorFormat requestedColorFormat = 32;
 
             switch (RequestedBackBufferFormat)
@@ -87,7 +81,7 @@ namespace SiliconStudio.Xenko.Games.Android
                     continue;
                 }
                 ContextRenderingApi = version;
-                GraphicsMode = new GraphicsMode(requestedColorFormat, 0, requestedStencil);
+                GraphicsMode = new GraphicsMode(requestedColorFormat, 0, 0);
                 base.CreateFrameBuffer();
                 return;
             }
@@ -98,27 +92,24 @@ namespace SiliconStudio.Xenko.Games.Android
         private GLVersion GetMaximumSupportedProfile()
         {
             var window = ((AndroidWindow)this.WindowInfo);
-            var mode = new AndroidGraphicsMode(window.Display, (int)this.ContextRenderingApi, new GraphicsMode(32, 0, 0));
-            using (var context = new AndroidGraphicsContext(mode, window, this.GraphicsContext, GLVersion.ES2, GraphicsContextFlags.Embedded))
+            using (var context = new OpenTK.Graphics.GraphicsContext(GraphicsMode.Default, window, (int)GLVersion.ES2, 0, GraphicsContextFlags.Embedded))
             {
-                mode.Initialize(window.Display, (int)this.ContextRenderingApi);
-                window.CreateSurface(mode.Config);
-
                 context.MakeCurrent(window);
 
-                int versionMajor, versionMinor;
-                if (!OpenGLUtils.GetCurrentGLVersion(out versionMajor, out versionMinor))
+                PlatformConfigurations.RendererName = GL.GetString(StringName.Renderer);
+
+                int version;
+                if (!OpenGLUtils.GetCurrentGLVersion(out version))
                 {
-                    versionMajor = 2;
-                    versionMinor = 0;
+                    version = 200;
                 }
 
                 context.MakeCurrent(null);
                 window.DestroySurface();
 
-                if (versionMajor == 3)
+                if (version >= 300)
                 {
-                    return (versionMinor >= 1) ? GLVersion.ES31 : GLVersion.ES3;
+                    return GLVersion.ES3;
                 }
                 return GLVersion.ES2;
             }

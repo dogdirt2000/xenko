@@ -2,7 +2,7 @@
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
 using System.Runtime.InteropServices;
-#if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP
+#if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP && (SILICONSTUDIO_XENKO_UI_WINFORMS || SILICONSTUDIO_XENKO_UI_WPF)
 using System;
 using System.Diagnostics;
 using System.Windows;
@@ -16,14 +16,11 @@ using WinFormsKeys = System.Windows.Forms.Keys;
 
 namespace SiliconStudio.Xenko.Input
 {
-    public partial class InputManager
+    internal class InputManagerWinforms: InputManagerWindows<Control>
     {
-        private Control uiControl;
         private readonly Stopwatch pointerClock;
 
-        public static bool UseRawInput = true;
-
-        public InputManager(IServiceRegistry registry)
+        public InputManagerWinforms(IServiceRegistry registry)
             : base(registry)
         {
             HasKeyboard = true;
@@ -33,26 +30,18 @@ namespace SiliconStudio.Xenko.Input
             pointerClock = new Stopwatch();
 
             GamePadFactories.Add(new XInputGamePadFactory());
+#if !SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGL
             GamePadFactories.Add(new DirectInputGamePadFactory());
+#endif
         }
 
-        public override void Initialize()
+        public override void Initialize(GameContext<Control> context)
         {
-            base.Initialize();
-
-            switch (Game.Context.ContextType)
+            switch (context.ContextType)
             {
                 case AppContextType.Desktop:
-                    InitializeFromWindowsForms(Game.Context);
+                    InitializeFromWindowsForms(context);
                     break;
-                case AppContextType.DesktopWpf:
-                    InitializeFromWindowsWpf(Game.Context);
-                    break;
-#if SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGL
-                case AppContextType.DesktopOpenTK:
-                    InitializeFromOpenTK(Game.Context);
-                    break;
-#endif
                 default:
                     throw new ArgumentException(string.Format("WindowContext [{0}] not supported", Game.Context.ContextType));
             }
@@ -94,8 +83,8 @@ namespace SiliconStudio.Xenko.Input
 
         protected override void SetMousePosition(Vector2 normalizedPosition)
         {
-            var newPos = uiControl.PointToScreen(
-                new System.Drawing.Point((int)(uiControl.ClientRectangle.Width*normalizedPosition.X), (int)(uiControl.ClientRectangle.Height*normalizedPosition.Y)));
+            var newPos = UiControl.PointToScreen(
+                new System.Drawing.Point((int)(UiControl.ClientRectangle.Width*normalizedPosition.X), (int)(UiControl.ClientRectangle.Height*normalizedPosition.Y)));
             Cursor.Position = newPos;
         }
 
@@ -143,42 +132,41 @@ namespace SiliconStudio.Xenko.Input
             return virtualKey;
         }
 
-        private void InitializeFromWindowsForms(GameContext uiContext)
+        private void InitializeFromWindowsForms(GameContext<Control> uiContext)
         {
-            uiControl = (Control) uiContext.Control;
+            UiControl = uiContext.Control;
 
             pointerClock.Restart();
 
             if (UseRawInput)
             {
-                BindRawInputKeyboard(uiControl);
+                BindRawInputKeyboard(UiControl);
             }
             else
             {
-                EnsureMapKeys();
-                defaultWndProc = Win32Native.GetWindowLong(new HandleRef(this, uiControl.Handle), Win32Native.WindowLongType.WndProc);
+                defaultWndProc = Win32Native.GetWindowLong(UiControl.Handle, Win32Native.WindowLongType.WndProc);
                 // This is needed to prevent garbage collection of the delegate.
                 inputWndProc = WndProc;
                 var inputWndProcPtr = Marshal.GetFunctionPointerForDelegate(inputWndProc);
-                Win32Native.SetWindowLong(new HandleRef(this, uiControl.Handle), Win32Native.WindowLongType.WndProc, inputWndProcPtr);
+                Win32Native.SetWindowLong(UiControl.Handle, Win32Native.WindowLongType.WndProc, inputWndProcPtr);
             }
-            uiControl.GotFocus += (_, e) => OnUiControlGotFocus();
-            uiControl.LostFocus += (_, e) => OnUiControlLostFocus();
-            uiControl.MouseMove += (_, e) => OnMouseMoveEvent(new Vector2(e.X, e.Y));
-            uiControl.MouseDown += (_, e) => { uiControl.Focus(); OnMouseInputEvent(new Vector2(e.X, e.Y), ConvertMouseButton(e.Button), InputEventType.Down); };
-            uiControl.MouseUp += (_, e) => OnMouseInputEvent(new Vector2(e.X, e.Y), ConvertMouseButton(e.Button), InputEventType.Up);
-            uiControl.MouseWheel += (_, e) => OnMouseInputEvent(new Vector2(e.X, e.Y), MouseButton.Middle, InputEventType.Wheel, e.Delta);
-            uiControl.MouseCaptureChanged += (_, e) => OnLostMouseCaptureWinForms();
-            uiControl.SizeChanged += UiControlOnSizeChanged;
+            UiControl.GotFocus += (_, e) => OnUiControlGotFocus();
+            UiControl.LostFocus += (_, e) => OnUiControlLostFocus();
+            UiControl.MouseMove += (_, e) => OnMouseMoveEvent(new Vector2(e.X, e.Y));
+            UiControl.MouseDown += (_, e) => { UiControl.Focus(); OnMouseInputEvent(new Vector2(e.X, e.Y), ConvertMouseButton(e.Button), InputEventType.Down); };
+            UiControl.MouseUp += (_, e) => OnMouseInputEvent(new Vector2(e.X, e.Y), ConvertMouseButton(e.Button), InputEventType.Up);
+            UiControl.MouseWheel += (_, e) => OnMouseInputEvent(new Vector2(e.X, e.Y), MouseButton.Middle, InputEventType.Wheel, e.Delta);
+            UiControl.MouseCaptureChanged += (_, e) => OnLostMouseCaptureWinForms();
+            UiControl.SizeChanged += UiControlOnSizeChanged;
 
-            ControlWidth = uiControl.ClientSize.Width;
-            ControlHeight = uiControl.ClientSize.Height;
+            ControlWidth = UiControl.ClientSize.Width;
+            ControlHeight = UiControl.ClientSize.Height;
         }
 
         private void OnKeyEvent(WinFormsKeys keyCode, bool isKeyUp)
         {
             Keys key;
-            if (mapKeys.TryGetValue(keyCode, out key) && key != Keys.None)
+            if (WinKeys.mapKeys.TryGetValue(keyCode, out key) && key != Keys.None)
             {
                 var type = isKeyUp ? InputEventType.Up : InputEventType.Down;
                 lock (KeyboardInputEvents)
@@ -188,41 +176,16 @@ namespace SiliconStudio.Xenko.Input
             }
         }
 
-        private void InitializeFromWindowsWpf(GameContext uiContext)
-        {
-            var uiControlWpf = (Window)uiContext.Control;
-
-            var inputElement = uiControlWpf;
-
-            BindRawInputKeyboard(uiControl);
-            uiControlWpf.LostFocus += (_, e) => OnUiControlLostFocus();
-            uiControlWpf.Deactivated += (_, e) => OnUiControlLostFocus();
-            uiControlWpf.MouseMove += (_, e) => OnMouseMoveEvent(PointToVector2(e.GetPosition(inputElement)));
-            uiControlWpf.MouseDown += (_, e) => OnMouseInputEvent(PointToVector2(e.GetPosition(inputElement)), ConvertMouseButton(e.ChangedButton), InputEventType.Down);
-            uiControlWpf.MouseUp += (_, e) => OnMouseInputEvent(PointToVector2(e.GetPosition(inputElement)), ConvertMouseButton(e.ChangedButton), InputEventType.Up);
-            uiControlWpf.MouseWheel += (_, e) => OnMouseInputEvent(PointToVector2(e.GetPosition(inputElement)), MouseButton.Middle, InputEventType.Wheel, e.Delta);
-            uiControlWpf.SizeChanged += OnWpfSizeChanged;
-
-            ControlWidth = (float)uiControlWpf.ActualWidth;
-            ControlHeight = (float)uiControlWpf.ActualHeight;
-        }
-
         private void UiControlOnSizeChanged(object sender, EventArgs eventArgs)
         {
-            ControlWidth = uiControl.ClientSize.Width;
-            ControlHeight = uiControl.ClientSize.Height;
+            ControlWidth = UiControl.ClientSize.Width;
+            ControlHeight = UiControl.ClientSize.Height;
         }
 
-        private void OnWpfSizeChanged(object sender, SizeChangedEventArgs e)
-        {
-            ControlWidth = (float)e.NewSize.Width;
-            ControlHeight = (float)e.NewSize.Height;
-        }
-        
         private void OnMouseInputEvent(Vector2 pixelPosition, MouseButton button, InputEventType type, float value = 0)
         {
             // The mouse wheel event are still received even when the mouse cursor is out of the control boundaries. Discard the event in this case.
-            if (type == InputEventType.Wheel && !uiControl.ClientRectangle.Contains(uiControl.PointToClient(Control.MousePosition)))
+            if (type == InputEventType.Wheel && !UiControl.ClientRectangle.Contains(UiControl.PointToClient(Control.MousePosition)))
                 return;
 
             // the mouse events series has been interrupted because out of the window.
@@ -277,7 +240,7 @@ namespace SiliconStudio.Xenko.Input
             {
                 var buttonId = (int)button;
                 if (MouseButtonCurrentlyDown[buttonId])
-                    uiControl.Capture = true;
+                    UiControl.Capture = true;
             }
         }
 
@@ -285,7 +248,7 @@ namespace SiliconStudio.Xenko.Input
         {
             lock (KeyboardInputEvents)
             {
-                foreach (var key in mapKeys)
+                foreach (var key in WinKeys.mapKeys)
                 {
                     var state = Win32Native.GetKeyState((int)key.Key);
                     if ((state & 0x8000) == 0x8000)
@@ -317,24 +280,6 @@ namespace SiliconStudio.Xenko.Input
             return (MouseButton)(-1);
         }
 
-        private static MouseButton ConvertMouseButton(System.Windows.Input.MouseButton mouseButton)
-        {
-            switch (mouseButton)
-            {
-                case System.Windows.Input.MouseButton.Left:
-                    return MouseButton.Left;
-                case System.Windows.Input.MouseButton.Right:
-                    return MouseButton.Right;
-                case System.Windows.Input.MouseButton.Middle:
-                    return MouseButton.Middle;
-                case System.Windows.Input.MouseButton.XButton1:
-                    return MouseButton.Extended1;
-                case System.Windows.Input.MouseButton.XButton2:
-                    return MouseButton.Extended2;
-            }
-            return (MouseButton)(-1);
-        }
-
         private static PointerState InputEventTypeToPointerState(InputEventType type)
         {
             switch (type)
@@ -348,11 +293,6 @@ namespace SiliconStudio.Xenko.Input
             }
         }
         
-        private static Vector2 PointToVector2(Point point)
-        {
-            return new Vector2((float)point.X, (float)point.Y);
-        }
-
         // There is no multi-touch on windows, so there is nothing specific to do.
         public override bool MultiTouchEnabled { get; set; }
     }

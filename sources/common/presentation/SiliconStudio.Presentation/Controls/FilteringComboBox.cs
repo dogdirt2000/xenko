@@ -3,7 +3,6 @@
 using System;
 using System.Collections;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -89,6 +88,11 @@ namespace SiliconStudio.Presentation.Controls
         public static readonly DependencyProperty SortProperty = DependencyProperty.Register("Sort", typeof(FilteringComboBoxSort), typeof(FilteringComboBox), new FrameworkPropertyMetadata(OnItemsSourceRefresh));
 
         /// <summary>
+        /// Identifies the <see cref="SortMemberPath"/> dependency property.
+        /// </summary>
+        public static readonly DependencyProperty SortMemberPathProperty = DependencyProperty.Register("SortMemberPath", typeof(string), typeof(FilteringComboBox));
+
+        /// <summary>
         /// Identifies the <see cref="ValidatedValue"/> dependency property.
         /// </summary>
         public static readonly DependencyProperty ValidatedValueProperty = DependencyProperty.Register("ValidatedValue", typeof(object), typeof(FilteringComboBox));
@@ -97,6 +101,13 @@ namespace SiliconStudio.Presentation.Controls
         /// Identifies the <see cref="ValidatedItem"/> dependency property.
         /// </summary>
         public static readonly DependencyProperty ValidatedItemProperty = DependencyProperty.Register("ValidatedItem", typeof(object), typeof(FilteringComboBox));
+
+        /// <summary>
+        /// Identifies the <see cref="ValidateOnLostFocus"/> dependency property.
+        /// </summary>
+        public static readonly DependencyProperty ValidateOnLostFocusProperty =
+            DependencyProperty.Register(nameof(ValidateOnLostFocus), typeof(bool), typeof(FilteringComboBox), new PropertyMetadata(true));
+
 
         /// <summary>
         /// Raised just before the TextBox changes are validated. This event is cancellable
@@ -111,6 +122,7 @@ namespace SiliconStudio.Presentation.Controls
         static FilteringComboBox()
         {
             DefaultStyleKeyProperty.OverrideMetadata(typeof(FilteringComboBox), new FrameworkPropertyMetadata(typeof(FilteringComboBox)));
+            IsDropDownOpenProperty.OverrideMetadata(typeof(FilteringComboBox), new FrameworkPropertyMetadata(false, OnIsDropDownOpenChanged));
         }
 
         public FilteringComboBox()
@@ -152,13 +164,23 @@ namespace SiliconStudio.Presentation.Controls
         public IEnumerable ItemsToExclude { get { return (IEnumerable)GetValue(ItemsToExcludeProperty); } set { SetValue(ItemsToExcludeProperty, value); } }
 
         /// <summary>
-        /// Defines how choices are sorted.
+        /// Gets or sets the comparer used to sort items.
         /// </summary>
         public FilteringComboBoxSort Sort { get { return (FilteringComboBoxSort)GetValue(SortProperty); } set { SetValue(SortProperty, value); } }
+
+        /// <summary>
+        /// Gets or sets the name of the member to use to sort items.
+        /// </summary>
+        public string SortMemberPath { get { return (string)GetValue(SortMemberPathProperty); } set { SetValue(SortMemberPathProperty, value); } }
 
         public object ValidatedValue { get { return GetValue(ValidatedValueProperty); } set { SetValue(ValidatedValueProperty, value); } }
 
         public object ValidatedItem { get { return GetValue(ValidatedItemProperty); } set { SetValue(ValidatedItemProperty, value); } }
+
+        /// <summary>
+        /// Gets or sets whether the validation should happen when the control losts focus.
+        /// </summary>
+        public bool ValidateOnLostFocus { get { return (bool)GetValue(ValidateOnLostFocusProperty); } set { SetValue(ValidateOnLostFocusProperty, value); } }
 
         /// <summary>
         /// Raised just before the TextBox changes are validated. This event is cancellable
@@ -176,13 +198,16 @@ namespace SiliconStudio.Presentation.Controls
 
             if (newValue != null)
             {
-                var cvs = (CollectionView)CollectionViewSource.GetDefaultView(newValue);
-                cvs.Filter = InternalFilter;
-                var listCollectionView = cvs as ListCollectionView;
-                if (listCollectionView != null)
-                {
-                    listCollectionView.CustomSort = Sort;
-                }
+                UpdateCollectionView();
+            }
+        }
+
+        private static void OnIsDropDownOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var filteringComboBox = (FilteringComboBox)d;
+            if ((bool)e.NewValue && filteringComboBox.ItemsSource != null)
+            {
+                filteringComboBox.UpdateCollectionView();
             }
         }
 
@@ -332,7 +357,10 @@ namespace SiliconStudio.Presentation.Controls
                 SelectedItem = null;
                 updatingSelection = false;
             }
-            editableTextBox.Validate();
+            if (ValidateOnLostFocus)
+            {
+                editableTextBox.Validate();
+            }
             // Make sure the drop down is closed
             IsDropDownOpen = false;
             clearing = false;
@@ -355,13 +383,10 @@ namespace SiliconStudio.Presentation.Controls
                 Sort.Token = editableTextBox.Text;
 
             // TODO: this will update the selected index because the collection view is shared. If UpdateSelectionOnValidation is true, this will still modify the SelectedIndex
+            UpdateCollectionView();
+
             var collectionView = CollectionViewSource.GetDefaultView(ItemsSource);
-            collectionView.Filter = InternalFilter;
             var listCollectionView = collectionView as ListCollectionView;
-            if (listCollectionView != null)
-            {
-                listCollectionView.CustomSort = Sort;
-            }
 
             collectionView.Refresh();
             if (!validating)
@@ -372,6 +397,17 @@ namespace SiliconStudio.Presentation.Controls
                 }
             }
             updatingSelection = false;
+        }
+
+        private void UpdateCollectionView()
+        {
+            var collectionView = CollectionViewSource.GetDefaultView(ItemsSource);
+            collectionView.Filter = InternalFilter;
+            var listCollectionView = collectionView as ListCollectionView;
+            if (listCollectionView != null)
+            {
+                listCollectionView.CustomSort = Sort;
+            }
         }
 
         private void EditableTextBoxPreviewKeyDown(object sender, KeyEventArgs e)
@@ -467,7 +503,7 @@ namespace SiliconStudio.Presentation.Controls
 
         private bool InternalFilter(object obj)
         {
-            var filter = editableTextBox?.Text;
+            var filter = editableTextBox?.Text.Trim();
             if (string.IsNullOrWhiteSpace(filter))
                 return true;
 
@@ -484,7 +520,13 @@ namespace SiliconStudio.Presentation.Controls
 
         private static bool MatchText(string inputText, string text)
         {
-            return text.IndexOf(inputText, StringComparison.InvariantCultureIgnoreCase) > -1 || MatchCamelCase(inputText, text);
+            var tokens = inputText.Split(" \t\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
+            {
+                if (text.IndexOf(token, StringComparison.InvariantCultureIgnoreCase) < 0 && !MatchCamelCase(token, text))
+                    return false;
+            }
+            return true;
         }
 
         private object ResolveDisplayMemberValue(object obj)
@@ -492,7 +534,7 @@ namespace SiliconStudio.Presentation.Controls
             var value = obj;
             try
             {
-                SetBinding(InternalValuePathProperty, new Binding(DisplayMemberPath) { Source = obj });
+                SetBinding(InternalValuePathProperty, new Binding(SortMemberPath) { Source = obj });
                 value = GetValue(InternalValuePathProperty);
             }
             catch (Exception e)

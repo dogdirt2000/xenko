@@ -1,7 +1,9 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 using System;
+using System.IO;
 using System.Threading.Tasks;
+using SiliconStudio.Core.Serialization;
 using SiliconStudio.Xenko.Engine.Network;
 using SiliconStudio.Xenko.Shaders.Compiler.Internals;
 
@@ -22,8 +24,11 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             this.packageId = packageId;
         }
 
-        public void NotifyEffectUsed(EffectCompileRequest effectCompileRequest)
+        public void NotifyEffectUsed(EffectCompileRequest effectCompileRequest, CompilerResults result)
         {
+            if (result.HasErrors)
+                return;
+
             Task.Run(async () =>
             {
                 // Silently fails if connection already failed previously
@@ -31,9 +36,23 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 if (socketMessageLayerTask.IsFaulted)
                     return;
 
+                var bytecode = await result.Bytecode.AwaitResult();
+                if (bytecode.CompilationLog.HasErrors)
+                    return;
+
+                // Ignore everything that has been compiled by the startup cache
+                if (bytecode.LoadSource == EffectBytecodeCacheLoadSource.StartupCache)
+                    return;
+
                 // Send any effect request remotely (should fail if not connected)
                 var socketMessageLayer = await socketMessageLayerTask;
-                await socketMessageLayer.Send(new RemoteEffectCompilerEffectRequested { Request = effectCompileRequest });
+
+                var memoryStream = new MemoryStream();
+                var binaryWriter = new BinarySerializationWriter(memoryStream);
+                binaryWriter.Context.SerializerSelector = SerializerSelector.AssetWithReuse;
+                binaryWriter.SerializeExtended(effectCompileRequest, ArchiveMode.Serialize, null);
+
+                await socketMessageLayer.Send(new RemoteEffectCompilerEffectRequested { Request = memoryStream.ToArray() });
             });
         }
 
@@ -55,7 +74,7 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             return socketMessageLayer;
         }
 
-        public async Task<EffectBytecodeCompilerResult> Compile(ShaderMixinSource mixinTree, CompilerParameters compilerParameters)
+        public async Task<EffectBytecodeCompilerResult> Compile(ShaderMixinSource mixinTree, EffectCompilerParameters effectParameters)
         {
             // Make sure we are connected
             // TODO: Handle reconnections, etc...
@@ -64,11 +83,17 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             var shaderCompilerAnswer = (RemoteEffectCompilerEffectAnswer)await socketMessageLayer.SendReceiveAsync(new RemoteEffectCompilerEffectRequest
             {
                 MixinTree = mixinTree,
-                UsedParameters = mixinTree.UsedParameters,
+                EffectParameters = effectParameters,
             });
 
-            // TODO: Get LoggerResult as well
-            return new EffectBytecodeCompilerResult(shaderCompilerAnswer.EffectBytecode);
+            var result = new EffectBytecodeCompilerResult(shaderCompilerAnswer.EffectBytecode, EffectBytecodeCacheLoadSource.JustCompiled);
+
+            foreach (var message in shaderCompilerAnswer.LogMessages)
+                result.CompilationLog.Messages.Add(message);
+
+            result.CompilationLog.HasErrors = shaderCompilerAnswer.LogHasErrors;
+
+            return result;
         }
 
         private async Task<SocketMessageLayer> GetOrCreateConnection()

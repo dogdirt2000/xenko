@@ -1,6 +1,5 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
-using System.Collections.Generic;
 using SiliconStudio.Core.Reflection;
 using SiliconStudio.Quantum.Contents;
 using SiliconStudio.Quantum.References;
@@ -14,10 +13,10 @@ namespace SiliconStudio.Quantum
     public class DefaultContentFactory : IContentFactory
     {
         /// <inheritdoc/>
-        public virtual IContent CreateObjectContent(INodeBuilder nodeBuilder, object obj, ITypeDescriptor descriptor, bool isPrimitive, bool shouldProcessReference)
+        public virtual IContent CreateObjectContent(INodeBuilder nodeBuilder, object obj, ITypeDescriptor descriptor, bool isPrimitive)
         {
             var reference = nodeBuilder.CreateReferenceForNode(descriptor.Type, obj) as ReferenceEnumerable;
-            return new ObjectContent(obj, descriptor, isPrimitive, reference) { ShouldProcessReference = shouldProcessReference };
+            return new ObjectContent(obj, descriptor, isPrimitive, reference);
         }
 
         /// <inheritdoc/>
@@ -27,13 +26,10 @@ namespace SiliconStudio.Quantum
         }
 
         /// <inheritdoc/>
-        public virtual IContent CreateMemberContent(INodeBuilder nodeBuilder, IContent container, IMemberDescriptor member, bool isPrimitive, object value, bool shouldProcessReference)
+        public virtual IContent CreateMemberContent(INodeBuilder nodeBuilder, ContentBase container, IMemberDescriptor member, bool isPrimitive, object value)
         {
             var reference = nodeBuilder.CreateReferenceForNode(member.Type, value);
-            return new MemberContent(nodeBuilder, container, member, isPrimitive, reference)
-            {
-                ShouldProcessReference = shouldProcessReference
-            };
+            return new MemberContent(nodeBuilder, container, member, isPrimitive, reference);
         }
     }
 }

@@ -62,7 +62,7 @@ namespace {1}
 
             var commandLine = string.Join(" ", Environment.GetCommandLineArgs());
 
-            var graphicsPlatform = parameters.Get(CompilerParameters.GraphicsPlatformKey);
+            var graphicsPlatform = parameters.EffectParameters.Platform;
             string xenkoDefine = "undefined";
             switch (graphicsPlatform)
             {
@@ -74,6 +74,9 @@ namespace {1}
                     break;
                 case GraphicsPlatform.OpenGLES:
                     xenkoDefine = "SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGLES";
+                    break;
+                case GraphicsPlatform.Vulkan:
+                    xenkoDefine = "SILICONSTUDIO_XENKO_GRAPHICS_API_VULKAN";
                     break;
             }
 

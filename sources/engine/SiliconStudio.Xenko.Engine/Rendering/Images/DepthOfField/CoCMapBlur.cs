@@ -19,7 +19,7 @@ namespace SiliconStudio.Xenko.Rendering.Images
     /// </remarks>
     public class CoCMapBlur : ImageEffect
     {
-        private ImageEffect cocBlurEffect;
+        private ImageEffectShader cocBlurEffect;
 
         private float radius;
 
@@ -67,7 +67,7 @@ namespace SiliconStudio.Xenko.Rendering.Images
             cocBlurEffect = ToLoadAndUnload(new ImageEffectShader("CoCMapBlurEffect"));
         }
 
-        protected override void DrawCore(RenderContext context)
+        protected override void DrawCore(RenderDrawContext context)
         {
             // Updates the weight array if necessary
             if (weightsDirty || tapCount == 0)
@@ -82,6 +82,7 @@ namespace SiliconStudio.Xenko.Rendering.Images
             var outputTexture = GetSafeOutput(0);
 
             cocBlurEffect.Parameters.Set(DepthAwareDirectionalBlurKeys.Count, tapCount);
+            cocBlurEffect.EffectInstance.UpdateEffect(context.GraphicsDevice);
             cocBlurEffect.Parameters.Set(CoCMapBlurShaderKeys.Radius, radius);
             cocBlurEffect.Parameters.Set(CoCMapBlurShaderKeys.OffsetsWeights, tapWeights);
             var tapNumber = 2 * tapCount - 1;

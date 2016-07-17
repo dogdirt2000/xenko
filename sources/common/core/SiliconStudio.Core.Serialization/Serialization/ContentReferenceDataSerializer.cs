@@ -3,12 +3,13 @@
 using System;
 
 using SiliconStudio.Core.Reflection;
+using SiliconStudio.Core.Serialization.Assets;
 using SiliconStudio.Core.Serialization.Contents;
 
 namespace SiliconStudio.Core.Serialization
 {
     /// <summary>
-    /// Serialize object with its underlying Id and Location, and use <see cref="Assets.AssetManager"/> to generate a separate chunk.
+    /// Serialize object with its underlying Id and Location, and use <see cref="ContentManager"/> to generate a separate chunk.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     public sealed class ReferenceSerializer<T> : DataSerializer<T> where T : class
@@ -23,7 +24,7 @@ namespace SiliconStudio.Core.Serialization
             {
                 if (mode == ArchiveMode.Serialize)
                 {
-                    var contentReference = new ContentReference<T> { Value = obj };
+                    var contentReference = new ContentReference<T>(obj);
                     int index = contentSerializerContext.AddContentReference(contentReference);
                     stream.Write(index);
                 }
@@ -35,7 +36,7 @@ namespace SiliconStudio.Core.Serialization
                     if (obj == null)
                     {
                         // Check if already deserialized
-                        var assetReference = contentSerializerContext.AssetManager.FindDeserializedObject(contentReference.Location, typeof(T));
+                        var assetReference = contentSerializerContext.ContentManager.FindDeserializedObject(contentReference.Location, typeof(T));
                         if (assetReference != null)
                         {
                             obj = (T)assetReference.Object;
@@ -46,19 +47,22 @@ namespace SiliconStudio.Core.Serialization
 
                     if (obj == null && contentSerializerContext.LoadContentReferences)
                     {
-                        var contentSerializer = cachedContentSerializer ?? (cachedContentSerializer = contentSerializerContext.AssetManager.Serializer.GetSerializer(null, typeof(T)));
+                        var contentSerializer = cachedContentSerializer ?? (cachedContentSerializer = contentSerializerContext.ContentManager.Serializer.GetSerializer(null, typeof(T)));
                         if (contentSerializer == null)
                         {
                             // Need to read chunk header to know actual type (note that we can't cache it in cachedContentSerializer as it depends on content)
-                            var chunkHeader = contentSerializerContext.AssetManager.ReadChunkHeader(contentReference.Location);
-                            if (chunkHeader == null || (contentSerializer = contentSerializerContext.AssetManager.Serializer.GetSerializer(AssemblyRegistry.GetType(chunkHeader.Type), typeof(T))) == null)
-                                throw new InvalidOperationException(string.Format("Could not find a valid content serializer for {0} when loading {1}", typeof(T), contentReference.Location));
+                            var chunkHeader = contentSerializerContext.ContentManager.ReadChunkHeader(contentReference.Location);
+                            if (chunkHeader == null || (contentSerializer = contentSerializerContext.ContentManager.Serializer.GetSerializer(AssemblyRegistry.GetType(chunkHeader.Type), typeof(T))) == null)
+                                throw new InvalidOperationException($"Could not find a valid content serializer for {typeof(T)} when loading {contentReference.Location}");
                         }
 
                         // First time, let's create it
-                        obj = (T)contentSerializer.Construct(contentSerializerContext);
-                        contentSerializerContext.AssetManager.RegisterDeserializedObject(contentReference.Location, obj);
-                        contentReference.Value = obj;
+                        if (contentSerializerContext.ContentManager.Exists(contentReference.Location))
+                        {
+                            obj = (T)contentSerializer.Construct(contentSerializerContext);
+                            contentSerializerContext.ContentManager.RegisterDeserializedObject(contentReference.Location, obj);
+                            contentReference.Value = obj;
+                        }
                     }
                 }
             }
@@ -75,7 +79,7 @@ namespace SiliconStudio.Core.Serialization
                 {
                     // This case will happen when serializing build engine command hashes: we still want Location to still be written
                     var attachedReference = AttachedReferenceManager.GetAttachedReference(obj);
-                    if (attachedReference == null || attachedReference.Url == null)
+                    if (attachedReference?.Url == null)
                         throw new InvalidOperationException("Error when serializing reference.");
 
                     // TODO: Do not use string
@@ -89,7 +93,7 @@ namespace SiliconStudio.Core.Serialization
                     var id = stream.Read<Guid>();
                     var url = stream.ReadString();
 
-                    obj = (T)AttachedReferenceManager.CreateSerializableVersion(type, id, url);
+                    obj = (T)AttachedReferenceManager.CreateProxyObject(type, id, url);
                 }
             }
             else
@@ -99,7 +103,7 @@ namespace SiliconStudio.Core.Serialization
                 {
                     // This case will happen when serializing build engine command hashes: we still want Location to still be written
                     var attachedReference = AttachedReferenceManager.GetAttachedReference(obj);
-                    if (attachedReference == null || attachedReference.Url == null)
+                    if (attachedReference?.Url == null)
                         throw new InvalidOperationException("Error when serializing reference.");
 
                     stream.Write(attachedReference.Url);
@@ -113,22 +117,22 @@ namespace SiliconStudio.Core.Serialization
         }
     }
 
-    public sealed class ContentReferenceDataSerializer<T> : DataSerializer<ContentReference<T>> where T : class
+    internal sealed class ContentReferenceDataSerializer<T> : DataSerializer<ContentReference<T>> where T : class
     {
-        public override void Serialize(ref ContentReference<T> contentReference, ArchiveMode mode, SerializationStream stream)
+        public override void Serialize(ref ContentReference<T> reference, ArchiveMode mode, SerializationStream stream)
         {
             var contentSerializerContext = stream.Context.Get(ContentSerializerContext.ContentSerializerContextProperty);
             if (contentSerializerContext != null)
             {
                 if (mode == ArchiveMode.Serialize)
                 {
-                    int index = contentSerializerContext.AddContentReference(contentReference);
+                    int index = contentSerializerContext.AddContentReference(reference);
                     stream.Write(index);
                 }
                 else
                 {
                     int index = stream.ReadInt32();
-                    contentReference = contentSerializerContext.GetContentReference<T>(index);
+                    reference = contentSerializerContext.GetContentReference<T>(index);
                 }
             }
             else
@@ -138,7 +142,7 @@ namespace SiliconStudio.Core.Serialization
                 {
                     {
                         // This case will happen when serializing build engine command hashes: we still want Location to still be written
-                        stream.Write(contentReference.Location);
+                        stream.Write(reference.Location);
                     }
                 }
                 else

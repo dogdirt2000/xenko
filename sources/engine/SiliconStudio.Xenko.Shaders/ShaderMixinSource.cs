@@ -2,6 +2,7 @@
 // This file is distributed under GPL v3. See LICENSE.md for details.
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 
@@ -23,13 +24,14 @@ namespace SiliconStudio.Xenko.Shaders
             Mixins = new List<ShaderClassSource>();
             Compositions = new Core.Collections.SortedList<string, ShaderSource>();
             Macros = new List<ShaderMacro>();
-            UsedParameters = new ShaderMixinParameters();
         }
 
         /// <summary>
         /// Gets or sets the name of the xkfx effect linked to this node.
         /// </summary>
         /// <value>The name of the xkfx effect.</value>
+        [DataMember(0)]
+        [DefaultValue(null)]
         public string Name { get; set; }
 
         [DataMemberIgnore]
@@ -46,26 +48,22 @@ namespace SiliconStudio.Xenko.Shaders
         /// Gets or sets the mixins.
         /// </summary>
         /// <value>The mixins.</value>
+        [DataMember(10)]
         public List<ShaderClassSource> Mixins { get; set; }
-
-        /// <summary>
-        /// Gets or sets the macros.
-        /// </summary>
-        /// <value>The macros.</value>
-        public List<ShaderMacro> Macros { get; set; }
 
         /// <summary>
         /// Gets or sets the compositions.
         /// </summary>
         /// <value>The compositions.</value>
+        [DataMember(20)]
         public Core.Collections.SortedList<string, ShaderSource> Compositions { get; set; }
 
         /// <summary>
-        /// Gets the used parameters for this mixin tree.
+        /// Gets or sets the macros.
         /// </summary>
-        /// <value>The used parameters.</value>
-        [DataMemberIgnore]
-        public ShaderMixinParameters UsedParameters { get; set; }
+        /// <value>The macros.</value>
+        [DataMember(30)]
+        public List<ShaderMacro> Macros { get; set; }
 
         /// <summary>
         /// Adds a composition to this mixin.
@@ -162,9 +160,12 @@ namespace SiliconStudio.Xenko.Shaders
             unchecked
             {
                 int hashCode = 0;
-                hashCode = (hashCode * 397) ^ Utilities.GetHashCode(Mixins);
-                hashCode = (hashCode * 397) ^ Utilities.GetHashCode(Macros);
-                hashCode = (hashCode * 397) ^ Utilities.GetHashCode(Compositions);
+                foreach (var current in Mixins)
+                    hashCode = (hashCode * 397) ^ (current?.GetHashCode() ?? 0);
+                foreach (var current in Macros)
+                    hashCode = (hashCode * 397) ^ current.GetHashCode();
+                foreach (var current in Compositions)
+                    hashCode = (hashCode * 397) ^ current.GetHashCode();
                 return hashCode;
             }
         }
@@ -218,6 +219,24 @@ namespace SiliconStudio.Xenko.Shaders
                 result.Append("]");
             }
             return result.ToString();
+        }
+
+        internal bool ShouldSerializeMacros()
+        {
+            // If collection is non-null and empty, skip serialization
+            return Macros == null || Macros.Count != 0;
+        }
+
+        internal bool ShouldSerializeMixins()
+        {
+            // If collection is non-null and empty, skip serialization
+            return Mixins == null || Mixins.Count != 0;
+        }
+
+        internal bool ShouldSerializeCompositions()
+        {
+            // If collection is non-null and empty, skip serialization
+            return Compositions == null || Compositions.Count != 0;
         }
     }
 }

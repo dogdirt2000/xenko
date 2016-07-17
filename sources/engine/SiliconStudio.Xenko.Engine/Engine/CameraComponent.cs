@@ -1,6 +1,7 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
+using System;
 using System.ComponentModel;
 using SiliconStudio.Core;
 using SiliconStudio.Core.Annotations;
@@ -15,8 +16,9 @@ namespace SiliconStudio.Xenko.Engine
     /// Describes the camera projection and view.
     /// </summary>
     [DataContract("CameraComponent")]
-    [Display(13000, "Camera", Expand = ExpandRule.Once)]
-    [DefaultEntityComponentRenderer(typeof(CameraComponentRenderer), -1000)]
+    [Display("Camera", Expand = ExpandRule.Once)]
+    //[DefaultEntityComponentRenderer(typeof(CameraComponentRenderer), -1000)]
+    [ComponentOrder(13000)]
     public sealed class CameraComponent : ActivableEntityComponent
     {
         public const float DefaultAspectRatio = 16.0f / 9.0f;
@@ -28,12 +30,6 @@ namespace SiliconStudio.Xenko.Engine
         public const float DefaultNearClipPlane = 0.1f;
 
         public const float DefaultFarClipPlane = 1000.0f;
-
-
-        /// <summary>
-        /// The property key of this component.
-        /// </summary>
-        public static PropertyKey<CameraComponent> Key = new PropertyKey<CameraComponent>("Key", typeof(CameraComponent));
 
         /// <summary>
         /// Create a new <see cref="CameraComponent"/> instance.
@@ -121,7 +117,7 @@ namespace SiliconStudio.Xenko.Engine
         /// <userdoc>If checked, use the value contained in 'Aspect Ratio' to calculate the projection matrices. Otherwise, automatically adjust the aspect ratio to the ratio of the render target.</userdoc>
         [DataMember(35)]
         [DefaultValue(false)]
-        [Display("Custom Aspect Ratio?")]
+        [Display("Custom Aspect Ratio")]
         public bool UseCustomAspectRatio { get; set; }
 
         /// <summary>
@@ -199,7 +195,18 @@ namespace SiliconStudio.Xenko.Engine
             if (!UseCustomViewMatrix)
             {
                 var worldMatrix = EnsureEntity.Transform.WorldMatrix;
-                Matrix.Invert(ref worldMatrix, out ViewMatrix);
+
+                Vector3 scale, translation;
+                worldMatrix.Decompose(out scale, out ViewMatrix, out translation);
+
+                // Transpose ViewMatrix (rotation only, so equivalent to inversing it)
+                ViewMatrix.Transpose();
+
+                // Rotate our translation so that we can inject it in the view matrix directly
+                Vector3.TransformCoordinate(ref translation, ref ViewMatrix, out translation);
+
+                // Apply inverse of translation (equivalent to opposite)
+                ViewMatrix.TranslationVector = -translation;
             }
             
             // Calculates the projection
@@ -208,7 +215,7 @@ namespace SiliconStudio.Xenko.Engine
             {
                 // Calculates the aspect ratio
                 var aspectRatio = AspectRatio;
-                if (!UseCustomAspectRatio && screenAspectRatio.HasValue)
+                if (screenAspectRatio.HasValue && !UseCustomAspectRatio)
                 {
                     aspectRatio = screenAspectRatio.Value;
                 }
@@ -223,11 +230,6 @@ namespace SiliconStudio.Xenko.Engine
 
             // Update the frustum.
             Frustum = new BoundingFrustum(ref ViewProjectionMatrix);
-        }
-
-        public override PropertyKey GetDefaultKey()
-        {
-            return Key;
         }
     }
 }

@@ -22,7 +22,7 @@ namespace SiliconStudio.Xenko.Assets.Textures
     {
         protected override void Compile(AssetCompilerContext context, string urlInStorage, UFile assetAbsolutePath, TextureAsset asset, AssetCompilerResult result)
         {
-            if (!EnsureSourceExists(result, asset, assetAbsolutePath))
+            if (!EnsureSourcesExist(result, asset, assetAbsolutePath))
                 return;
         
             // Get absolute path of asset source on disk
@@ -31,7 +31,7 @@ namespace SiliconStudio.Xenko.Assets.Textures
             var gameSettingsAsset = context.GetGameSettingsAsset();
             var colorSpace = context.GetColorSpace();
 
-            var parameter = new TextureConvertParameters(assetSource, asset, context.Platform, context.GetGraphicsPlatform(), gameSettingsAsset.DefaultGraphicsProfile, gameSettingsAsset.TextureQuality, colorSpace);
+            var parameter = new TextureConvertParameters(assetSource, asset, context.Platform, context.GetGraphicsPlatform(AssetItem.Package), gameSettingsAsset.Get<RenderingSettings>(context.Platform).DefaultGraphicsProfile, gameSettingsAsset.Get<TextureSettings>().TextureQuality, colorSpace);
             result.BuildSteps = new AssetBuildStep(AssetItem) { new TextureConvertCommand(urlInStorage, parameter) };
         }
 
@@ -40,10 +40,6 @@ namespace SiliconStudio.Xenko.Assets.Textures
         /// </summary>
         public class TextureConvertCommand : AssetCommand<TextureConvertParameters>
         {
-            public TextureConvertCommand()
-            {
-            }
-
             public TextureConvertCommand(string url, TextureConvertParameters description)
                 : base(url, description)
             {

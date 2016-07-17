@@ -13,7 +13,7 @@ namespace SiliconStudio.Xenko.Rendering
     /// <summary>
     /// A render frame is a container for a render target and its depth stencil buffer.
     /// </summary>
-    [DataSerializerGlobal(typeof(ReferenceSerializer<RenderFrame>), Profile = "Asset")]
+    [DataSerializerGlobal(typeof(ReferenceSerializer<RenderFrame>), Profile = "Content")]
     [ContentSerializer(typeof(DataContentSerializer<RenderFrame>))]
     [DataSerializer(typeof(RenderFrameSerializer))]
     public class RenderFrame : IDisposable
@@ -113,14 +113,47 @@ namespace SiliconStudio.Xenko.Rendering
         /// <param name="renderContext">The render context.</param>
         /// <param name="enableDepth">if set to <c>true</c> [enable depth].</param>
         /// <exception cref="System.ArgumentNullException">renderContext</exception>
-        public void Activate(RenderContext renderContext, bool enableDepth = true)
+        public void Activate(RenderDrawContext renderContext, bool enableDepth = true)
         {
             if (renderContext == null) throw new ArgumentNullException("renderContext");
 
             // TODO: Handle support for shared depth stencil buffer
 
-            // Sets the depth and render target
-            renderContext.GraphicsDevice.SetDepthAndRenderTargets(enableDepth ? DepthStencil : null, RenderTargets);
+            renderContext.CommandList.SetRenderTargetsAndViewport(enableDepth ? DepthStencil : null, RenderTargets);
+        }
+
+        public void Activate(RenderDrawContext renderContext, Texture depthStencilTexture)
+        {
+            if (renderContext == null) throw new ArgumentNullException("renderContext");
+
+            renderContext.CommandList.SetRenderTargetsAndViewport(depthStencilTexture, RenderTargets);
+        }
+
+
+        /// <summary>
+        /// Gets a <see cref="RenderOutputDescription"/> that matches current depth stencil and render target formats.
+        /// </summary>
+        /// <returns>The <see cref="RenderOutputDescription"/>.</returns>
+        public unsafe RenderOutputDescription GetRenderOutputDescription()
+        {
+            var result = new RenderOutputDescription
+            {
+                DepthStencilFormat = DepthStencil != null ? DepthStencil.ViewFormat : PixelFormat.None,
+                MultiSampleLevel = DepthStencil != null ? DepthStencil.MultiSampleLevel : MSAALevel.None,
+            };
+
+            if (RenderTargets != null)
+            {
+                result.RenderTargetCount = RenderTargets.Length;
+                var renderTargetFormat = &result.RenderTargetFormat0;
+                for (int i = 0; i < RenderTargets.Length; ++i)
+                {
+                    *renderTargetFormat++ = RenderTargets[i].ViewFormat;
+                    result.MultiSampleLevel = RenderTargets[i].MultiSampleLevel; // multisample should all be equal
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -148,16 +181,16 @@ namespace SiliconStudio.Xenko.Rendering
             {
                 foreach (var renderTexture in renderTextures)
                 {
-                    if (renderTexture != null && !renderTexture.IsRenderTarget)
+                    if (!renderTexture.IsRenderTarget)
                     {
                         throw new ArgumentException("The texture must be a render target", "renderTextures");
                     }
 
-                    if (referenceTexture == null && renderTexture != null)
+                    if (referenceTexture == null)
                     {
                         referenceTexture = renderTexture;
                     }
-                    else if (renderTexture != null)
+                    else
                     {
                         if (referenceTexture.Width != renderTexture.Width || referenceTexture.Height != renderTexture.Height)
                         {
@@ -230,7 +263,7 @@ namespace SiliconStudio.Xenko.Rendering
                 return null;
             }
 
-            return FromTexture(new [] { texture }, depthStencilTexture);
+            return FromTexture(texture != null ? new[] { texture } : null, depthStencilTexture);
         }
 
         /// <summary>
@@ -273,13 +306,14 @@ namespace SiliconStudio.Xenko.Rendering
             if (description.DepthFormat == RenderFrameDepthFormat.None && description.Format == RenderFrameFormat.None)
                 return;
 
-            var referenceTexture = referenceFrame != null ? referenceFrame.ReferenceTexture : device.BackBuffer;
-
             int width = description.Width;
             int height = description.Height;
 
             if (description.Mode == RenderFrameSizeMode.Relative)
             {
+                // TODO GRAPHICS REFACTOR check if it's OK to use Presenter targets
+                var referenceTexture = referenceFrame != null ? referenceFrame.ReferenceTexture : device.Presenter.BackBuffer;
+
                 width = (width * referenceTexture.Width) / 100;
                 height = (height * referenceTexture.Height) / 100;
             }
@@ -323,7 +357,7 @@ namespace SiliconStudio.Xenko.Rendering
             }
             else if (description.DepthFormat == RenderFrameDepthFormat.Depth || description.DepthFormat == RenderFrameDepthFormat.DepthAndStencil)
             {
-                var depthStencilExtraFlag = device.Features.Profile >= GraphicsProfile.Level_10_0 ? TextureFlags.ShaderResource : TextureFlags.None;
+                var depthStencilExtraFlag = device.Features.CurrentProfile >= GraphicsProfile.Level_10_0 ? TextureFlags.ShaderResource : TextureFlags.None;
                 depthStencil = Texture.New2D(device, width, height, 1, depthFormat, TextureFlags.DepthStencil | depthStencilExtraFlag);
             }
 

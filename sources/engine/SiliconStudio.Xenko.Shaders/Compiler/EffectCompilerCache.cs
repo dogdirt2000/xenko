@@ -14,10 +14,11 @@ using SiliconStudio.Core.IO;
 using SiliconStudio.Core.Serialization;
 using SiliconStudio.Core.Serialization.Assets;
 using SiliconStudio.Core.Storage;
+using SiliconStudio.Xenko.Rendering;
 
 namespace SiliconStudio.Xenko.Shaders.Compiler
 {
-    public delegate TaskScheduler TaskSchedulerSelector(ShaderMixinSource mixinTree, CompilerParameters compilerParameters);
+    public delegate TaskScheduler TaskSchedulerSelector(ShaderMixinSource mixinTree, EffectCompilerParameters? compilerParameters);
 
     /// <summary>
     /// Checks if an effect has already been compiled in its cache before deferring to a real <see cref="IEffectCompiler"/>.
@@ -26,7 +27,7 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
     public class EffectCompilerCache : EffectCompilerChain
     {
         private static readonly Logger Log = GlobalLogger.GetLogger("EffectCompilerCache");
-        private readonly Dictionary<ObjectId, EffectBytecode> bytecodes = new Dictionary<ObjectId, EffectBytecode>();
+        private readonly Dictionary<ObjectId, KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource>> bytecodes = new Dictionary<ObjectId, KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource>>();
         private readonly HashSet<ObjectId> bytecodesByPassingStorage = new HashSet<ObjectId>();
         private const string CompiledShadersKey = "__shaders_bytecode__";
 
@@ -38,6 +39,11 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
         public bool CompileEffectAsynchronously { get; set; }
 
         public override IVirtualFileProvider FileProvider { get; set; }
+
+        /// <summary>
+        /// If we have to compile a new shader, what kind of cache are we building?
+        /// </summary>
+        public EffectBytecodeCacheLoadSource CurrentCache { get; set; } = EffectBytecodeCacheLoadSource.DynamicCache;
 
         public EffectCompilerCache(EffectCompilerBase compiler, TaskSchedulerSelector taskSchedulerSelector = null) : base(compiler)
         {
@@ -55,12 +61,12 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             }
         }
 
-        public override TaskOrResult<EffectBytecodeCompilerResult> Compile(ShaderMixinSource mixin, CompilerParameters compilerParameters)
+        public override TaskOrResult<EffectBytecodeCompilerResult> Compile(ShaderMixinSource mixin, EffectCompilerParameters effectParameters, CompilerParameters compilerParameters)
         {
-            var database = (FileProvider ?? AssetManager.FileProvider) as DatabaseFileProvider;
+            var database = (FileProvider ?? ContentManager.FileProvider) as DatabaseFileProvider;
             if (database == null)
             {
-                throw new NotSupportedException("Using the cache requires to AssetManager.FileProvider to be valid.");
+                throw new NotSupportedException("Using the cache requires to ContentManager.FileProvider to be valid.");
             }
 
             // Forward DatabaseFileProvider to actual compiler here
@@ -68,13 +74,13 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             // Note: this system might need an overhaul... (too many states?)
             base.FileProvider = database;
 
-            var usedParameters = mixin.UsedParameters;
-            var mixinObjectId = ShaderMixinObjectId.Compute(mixin, usedParameters);
+            var usedParameters = compilerParameters;
+            var mixinObjectId = ShaderMixinObjectId.Compute(mixin, usedParameters.EffectParameters);
 
             // Final url of the compiled bytecode
             var compiledUrl = string.Format("{0}/{1}", CompiledShadersKey, mixinObjectId);
 
-            EffectBytecode bytecode = null;
+            var bytecode = new KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource>(null, EffectBytecodeCacheLoadSource.JustCompiled);
             lock (bytecodes)
             {                
                 // ------------------------------------------------------------------------------------------------------------
@@ -87,10 +93,10 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 }
 
                 // On non Windows platform, we are expecting to have the bytecode stored directly
-                if (Compiler is NullEffectCompiler && bytecode == null)
+                if (Compiler is NullEffectCompiler && bytecode.Key == null)
                 {
                     var stringBuilder = new StringBuilder();
-                    stringBuilder.AppendFormat("Unable to find compiled shaders [{0}] for mixin [{1}] with parameters [{2}]", compiledUrl, mixin, usedParameters.ToStringDetailed());
+                    stringBuilder.AppendFormat("Unable to find compiled shaders [{0}] for mixin [{1}] with parameters [{2}]", compiledUrl, mixin, usedParameters.ToStringPermutationsDetailed());
                     Log.Error(stringBuilder.ToString());
                     throw new InvalidOperationException(stringBuilder.ToString());
                 }
@@ -98,7 +104,7 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 // ------------------------------------------------------------------------------------------------------------
                 // 2) Try to load from database cache
                 // ------------------------------------------------------------------------------------------------------------
-                if (bytecode == null && database.ObjectDatabase.Exists(mixinObjectId))
+                if (bytecode.Key == null && database.ObjectDatabase.Exists(mixinObjectId))
                 {
                     using (var stream = database.ObjectDatabase.OpenStream(mixinObjectId))
                     {
@@ -109,7 +115,7 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                             var newBytecodeId = new ObjectId(objectIdBuffer);
                             bytecode = LoadEffectBytecode(database, newBytecodeId);
 
-                            if (bytecode != null)
+                            if (bytecode.Key != null)
                             {
                                 // If we successfully retrieved it from cache, add it to index map so that it won't be collected and available for faster lookup 
                                 database.AssetIndexMap[compiledUrl] = newBytecodeId;
@@ -119,9 +125,9 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 }
             }
 
-            if (bytecode != null)
+            if (bytecode.Key != null)
             {
-                return new EffectBytecodeCompilerResult(bytecode);
+                return new EffectBytecodeCompilerResult(bytecode.Key, bytecode.Value);
             }
 
             // ------------------------------------------------------------------------------------------------------------
@@ -139,7 +145,8 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 // Compile the mixin in a Task
                 if (CompileEffectAsynchronously)
                 {
-                    var resultTask = Task.Factory.StartNew(() => CompileBytecode(mixin, compilerParameters, mixinObjectId, database, compiledUrl, usedParameters), CancellationToken.None, TaskCreationOptions.None, taskSchedulerSelector != null ? taskSchedulerSelector(mixin, compilerParameters) : TaskScheduler.Default);
+                    var compilerParametersCopy = compilerParameters != null ? new CompilerParameters(compilerParameters) : null;
+                    var resultTask = Task.Factory.StartNew(() => CompileBytecode(mixin, effectParameters, compilerParametersCopy, mixinObjectId, database, compiledUrl), CancellationToken.None, TaskCreationOptions.None, taskSchedulerSelector != null ? taskSchedulerSelector(mixin, compilerParametersCopy.EffectParameters) : TaskScheduler.Default);
 
                     compilingShaders.Add(mixinObjectId, resultTask);
 
@@ -147,18 +154,18 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 }
                 else
                 {
-                    return CompileBytecode(mixin, compilerParameters, mixinObjectId, database, compiledUrl, usedParameters);
+                    return CompileBytecode(mixin, effectParameters, compilerParameters, mixinObjectId, database, compiledUrl);
                 }
             }
         }
 
-        private EffectBytecodeCompilerResult CompileBytecode(ShaderMixinSource mixinTree, CompilerParameters compilerParameters, ObjectId mixinObjectId, DatabaseFileProvider database, string compiledUrl, ShaderMixinParameters usedParameters)
+        private EffectBytecodeCompilerResult CompileBytecode(ShaderMixinSource mixinTree, EffectCompilerParameters effectParameters, CompilerParameters compilerParameters, ObjectId mixinObjectId, DatabaseFileProvider database, string compiledUrl)
         {
             // Open the database for writing
             var log = new LoggerResult();
 
             // Note: this compiler is expected to not be async and directly write stuff in localLogger
-            var compiledShader = base.Compile(mixinTree, compilerParameters).WaitForResult();
+            var compiledShader = base.Compile(mixinTree, effectParameters, compilerParameters).WaitForResult();
             compiledShader.CompilationLog.CopyTo(log);
             
             // If there are any errors, return immediately
@@ -182,6 +189,11 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
                 // TODO: Check if we really need to write the bytecode everytime even if id is not changed
                 var memoryStream = new MemoryStream();
                 compiledShader.Bytecode.WriteTo(memoryStream);
+                
+                // Write current cache at the end (not part of the pure bytecode, but we use this as meta info)
+                var writer = new BinarySerializationWriter(memoryStream);
+                writer.Write(CurrentCache);
+
                 memoryStream.Position = 0;
                 database.ObjectDatabase.Write(memoryStream, newBytecodeId, true);
                 database.AssetIndexMap[compiledUrl] = newBytecodeId;
@@ -194,11 +206,11 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
 
                 if (!bytecodes.ContainsKey(newBytecodeId))
                 {
-                    log.Verbose("New effect compiled #{0} [{1}] (db: {2})\r\n{3}", effectCompileCount, mixinObjectId, newBytecodeId, usedParameters.ToStringDetailed());
+                    log.Verbose("New effect compiled #{0} [{1}] (db: {2})\r\n{3}", effectCompileCount, mixinObjectId, newBytecodeId, compilerParameters?.ToStringPermutationsDetailed());
                     Interlocked.Increment(ref effectCompileCount);
 
                     // Replace or add new bytecode
-                    bytecodes[newBytecodeId] = compiledShader.Bytecode;
+                    bytecodes[newBytecodeId] = new KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource>(compiledShader.Bytecode, EffectBytecodeCacheLoadSource.JustCompiled);
                 }
             }
 
@@ -210,33 +222,42 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             return compiledShader;
         }
 
-        private EffectBytecode LoadEffectBytecode(DatabaseFileProvider database, ObjectId bytecodeId)
+        private KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource> LoadEffectBytecode(DatabaseFileProvider database, ObjectId bytecodeId)
         {
-            EffectBytecode bytecode = null;
+            KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource> bytecodePair;
 
-            if (!bytecodes.TryGetValue(bytecodeId, out bytecode))
+            if (!bytecodes.TryGetValue(bytecodeId, out bytecodePair))
             {
                 if (!bytecodesByPassingStorage.Contains(bytecodeId) && database.ObjectDatabase.Exists(bytecodeId))
                 {
                     using (var stream = database.ObjectDatabase.OpenStream(bytecodeId))
                     {
-                        bytecode = EffectBytecode.FromStream(stream);
+                        var bytecode = EffectBytecode.FromStream(stream);
+
+                        // Try to read an integer that would specify what kind of cache it belongs to (if undefined because of old versions, mark it as dynamic cache)
+                        var cacheSource = EffectBytecodeCacheLoadSource.DynamicCache;
+                        if (stream.Position < stream.Length)
+                        {
+                            var binaryReader = new BinarySerializationReader(stream);
+                            cacheSource = (EffectBytecodeCacheLoadSource)binaryReader.ReadInt32();
+                        }
+                        bytecodePair = new KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource>(bytecode, cacheSource);
                     }
                 }
-                if (bytecode != null)
+                if (bytecodePair.Key != null)
                 {
-                    bytecodes.Add(bytecodeId, bytecode);
+                    bytecodes.Add(bytecodeId, bytecodePair);
                 }
             }
 
             // Always check that the bytecode is in sync with hash sources on all platforms
-            if (bytecode != null && IsBytecodeObsolete(bytecode))
+            if (bytecodePair.Key != null && IsBytecodeObsolete(bytecodePair.Key))
             {
                 bytecodes.Remove(bytecodeId);
-                bytecode = null;
+                bytecodePair = new KeyValuePair<EffectBytecode, EffectBytecodeCacheLoadSource>(null, EffectBytecodeCacheLoadSource.JustCompiled);
             }
 
-            return bytecode;
+            return bytecodePair;
         }
 
         private void RemoveObsoleteStoredResults(HashSet<string> modifiedShaders)
@@ -245,7 +266,7 @@ namespace SiliconStudio.Xenko.Shaders.Compiler
             var keysToRemove = new List<ObjectId>();
             foreach (var bytecodePair in bytecodes)
             {
-                if (IsBytecodeObsolete(bytecodePair.Value, modifiedShaders))
+                if (IsBytecodeObsolete(bytecodePair.Value.Key, modifiedShaders))
                     keysToRemove.Add(bytecodePair.Key);
             }
 

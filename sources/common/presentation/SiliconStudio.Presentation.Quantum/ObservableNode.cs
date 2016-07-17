@@ -6,14 +6,12 @@ using System.Collections.ObjectModel;
 using System.Dynamic;
 using System.Linq;
 using System.Windows;
-using System.Windows.Input;
 using SiliconStudio.Core.Extensions;
 using SiliconStudio.Presentation.Collections;
+using SiliconStudio.Presentation.Commands;
 using SiliconStudio.Presentation.Core;
 using SiliconStudio.Presentation.ViewModel;
 using SiliconStudio.Quantum;
-using SiliconStudio.Quantum.Contents;
-
 using Expression = System.Linq.Expressions.Expression;
 
 namespace SiliconStudio.Presentation.Quantum
@@ -21,14 +19,14 @@ namespace SiliconStudio.Presentation.Quantum
     public abstract class ObservableNode : DispatcherViewModel, IObservableNode, IDynamicMetaObjectProvider
     {
         protected static readonly HashSet<string> ReservedNames = new HashSet<string>();
-        private readonly AutoUpdatingSortedObservableCollection<IObservableNode> children = new AutoUpdatingSortedObservableCollection<IObservableNode>(new AnonymousComparer<IObservableNode>(CompareChildren));
+        private readonly AutoUpdatingSortedObservableCollection<IObservableNode> children = new AutoUpdatingSortedObservableCollection<IObservableNode>(new AnonymousComparer<IObservableNode>(CompareChildren), nameof(Name), nameof(Index), nameof(Order));
         private readonly ObservableCollection<INodeCommandWrapper> commands = new ObservableCollection<INodeCommandWrapper>();
         private readonly Dictionary<string, object> associatedData = new Dictionary<string, object>();
+        private readonly List<string> changingProperties = new List<string>();
         private bool isVisible;
         private bool isReadOnly;
         private string displayName;
         private int visibleChildrenCount;
-        
         private List<IObservableNode> initializingChildren = new List<IObservableNode>();
 
         static ObservableNode()
@@ -38,7 +36,7 @@ namespace SiliconStudio.Presentation.Quantum
             ReservedNames.Add("Type");
         }
 
-        protected ObservableNode(ObservableViewModel ownerViewModel, object index = null)
+        protected ObservableNode(ObservableViewModel ownerViewModel, Index index)
             : base(ownerViewModel.ServiceProvider)
         {
             Owner = ownerViewModel;
@@ -106,7 +104,7 @@ namespace SiliconStudio.Presentation.Quantum
         /// <summary>
         /// Gets or sets the index of this node, relative to its parent node when its contains a collection. Can be null of this node is not in a collection.
         /// </summary>
-        public object Index { get; }
+        public Index Index { get; }
 
         /// <summary>
         /// Gets a unique identifier for this observable node.
@@ -132,7 +130,7 @@ namespace SiliconStudio.Presentation.Quantum
         /// Gets the level of depth of this node, starting from 0 for the root node.
         /// </summary>
         public int Level => Parent?.Level + 1 ?? 0;
-
+     
         /// <summary>
         /// Gets the order number of this node in its parent.
         /// </summary>
@@ -151,26 +149,14 @@ namespace SiliconStudio.Presentation.Quantum
         /// <inheritdoc/>
         public int VisibleChildrenCount { get { return visibleChildrenCount; } private set { SetValue(ref visibleChildrenCount, value); } }
 
+        internal new bool IsDestroyed => base.IsDestroyed;
+
         /// <inheritdoc/>
+        [Obsolete("This event is deprecated, IContent.Changed should be used instead")] // Unless needed for virtual/combined nodes?
         public event EventHandler<EventArgs> ValueChanged;
         
         /// <inheritdoc/>
         public event EventHandler<EventArgs> IsVisibleChanged;
-        
-        /// <summary>
-        /// Gets or sets the flags associated to this node.
-        /// </summary>
-        public ViewModelContentFlags Flags { get; set; }
-
-        /// <summary>
-        /// Gets or sets the serialization flags associated to this node.
-        /// </summary>
-        public ViewModelContentSerializeFlags SerializeFlags { get; set; }
-
-        /// <summary>
-        /// Gets or sets the state flags associated to this node.
-        /// </summary>
-        public ViewModelContentState LoadState { get; set; }
 
         /// <summary>
         /// Indicates whether the given name is reserved for the name of a property in an <see cref="ObservableNode"/>. Any children node with a colliding name will
@@ -192,6 +178,13 @@ namespace SiliconStudio.Presentation.Quantum
         public static string EscapeName(string name)
         {
             return !IsReserved(name) ? name : name + "_";
+        }
+
+        /// <inheritdoc/>
+        public override void Destroy()
+        {
+            EnsureNotDestroyed(Name);
+            base.Destroy();
         }
 
         /// <inheritdoc/>
@@ -294,7 +287,6 @@ namespace SiliconStudio.Presentation.Quantum
                 Name = newName;
             }
             ((ObservableNode)newParent).AddChild(this);
-            UpdateCommandPath();
         }
         
         /// <summary>
@@ -313,7 +305,7 @@ namespace SiliconStudio.Presentation.Quantum
         /// </summary>
         /// <param name="name">The name of the command to look for.</param>
         /// <returns>The corresponding command, or <c>null</c> if no command with the given name exists.</returns>
-        public ICommand GetCommand(string name)
+        public ICommandBase GetCommand(string name)
         {
             name = EscapeName(name);
             return Commands.FirstOrDefault(x => x.Name == name);
@@ -347,27 +339,34 @@ namespace SiliconStudio.Presentation.Quantum
             return new ObservableNodeDynamicMetaObject(parameter, this);
         }
 
-        public void NotifyPropertyChanging(string propertyName)
+        internal void NotifyPropertyChanging(string propertyName)
         {
-            OnPropertyChanging(propertyName, ObservableViewModel.HasChildPrefix + propertyName);
+            if (!changingProperties.Contains(propertyName))
+            {
+                changingProperties.Add(propertyName);
+                OnPropertyChanging(propertyName, ObservableViewModel.HasChildPrefix + propertyName);
+            }
         }
 
-        public void NotifyPropertyChanged(string propertyName)
+        internal void NotifyPropertyChanged(string propertyName)
         {
-            OnPropertyChanged(propertyName, ObservableViewModel.HasChildPrefix + propertyName);
+            if (changingProperties.Remove(propertyName))
+            {
+                OnPropertyChanged(propertyName, ObservableViewModel.HasChildPrefix + propertyName);
+            }
         }
 
         protected void FinalizeChildrenInitialization()
         {
             if (initializingChildren != null)
             {
-                OnPropertyChanging("Children");
+                OnPropertyChanging(nameof(Children));
                 foreach (var child in initializingChildren)
                 {
                     children.Add(child);
                 }
                 initializingChildren = null;
-                OnPropertyChanged("Children");
+                OnPropertyChanged(nameof(Children));
             }
         }
 
@@ -515,17 +514,6 @@ namespace SiliconStudio.Presentation.Quantum
             }
             base.OnPropertyChanged(propertyNames);
         }
-        private void UpdateCommandPath()
-        {
-            foreach (var commandWrapper in Commands.OfType<NodeCommandWrapperBase>())
-            {
-                commandWrapper.ObservableNodePath = Path;
-            }
-            foreach (var child in Children.OfType<ObservableNode>())
-            {
-                child.UpdateCommandPath();
-            }
-        }
 
         private void ChildVisibilityChanged(object sender, EventArgs e)
         {
@@ -549,11 +537,11 @@ namespace SiliconStudio.Presentation.Quantum
                 return 1;
 
             // Then we use index, if they are set and comparable.
-            if (a.Index != null && b.Index != null)
+            if (!a.Index.IsEmpty && !b.Index.IsEmpty)
             {
-                if (a.Index.GetType() == b.Index.GetType() && a.Index is IComparable)
+                if (a.Index.Value.GetType() == b.Index.Value.GetType())
                 {
-                    return ((IComparable)a.Index).CompareTo(b.Index);
+                    return a.Index.CompareTo(b.Index); 
                 }
             }
 

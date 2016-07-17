@@ -2,7 +2,7 @@
 // This file is distributed under GPL v3. See LICENSE.md for details.
 using System;
 using System.Collections.Generic;
-
+using System.Linq;
 using Irony.Parsing;
 
 using SiliconStudio.Xenko.Shaders.Parser.Ast;
@@ -130,6 +130,11 @@ namespace SiliconStudio.Xenko.Shaders.Parser.Grammar
             {
                 node.AstNode = new TypeIdentifier((TypeBase)node.AstNode);
             }
+        }
+
+        protected override void CreateConstantBufferTypeAst(ParsingContext context, ParseTreeNode node)
+        {
+            node.AstNode = XenkoConstantBufferType.Parse(node.ChildNodes[0].Token.Text);
         }
 
         protected void CreateClassIdentifierSubGenericAst(ParsingContext context, ParseTreeNode node)
@@ -294,6 +299,12 @@ namespace SiliconStudio.Xenko.Shaders.Parser.Grammar
             //                                   [0]               [1]
             // toplevel_declaration_block.Rule = "{" + toplevel_declaration_list + "}";
             node.AstNode = (List<Node>)node.ChildNodes[1].AstNode;
+        }
+
+        private static void CreateConstantBufferNameAst(ParsingContext context, ParseTreeNode node)
+        {
+            var value = Ast<Identifier>(node);
+            value.Text = string.Join(".", node.ChildNodes.Select(x => ((Identifier)x.AstNode).Text));
         }
     }
 }

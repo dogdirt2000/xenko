@@ -5,15 +5,11 @@ namespace SiliconStudio.Xenko.Rendering.Lights
     /// <summary>
     /// Defines a group of spot lights
     /// </summary>
-    class LightSpotGroup<int TMaxLightCount> : DirectLightGroup, NormalStream, PositionStream4, LightUtil
+    class LightSpotGroup<int TMaxLightCount> : DirectLightGroupPerDraw, LightSpot
     {
-        cbuffer PerObject
+        cbuffer PerDraw.Lighting
         {
-            float3 LightPositionWS[TMaxLightCount];
-            float3 LightDirectionsWS[TMaxLightCount];
-            float3 LightAngleOffsetAndInvSquareRadius[TMaxLightCount];
-            [Color]
-            float3 LightColor[TMaxLightCount];
+            SpotLightData Lights[TMaxLightCount];
         }
 
         override int GetMaxLightCount()
@@ -26,23 +22,14 @@ namespace SiliconStudio.Xenko.Rendering.Lights
         /// </summary>
         override void PrepareDirectLightCore(int lightIndex)
         {
-            float3 lightVector = LightPositionWS[lightIndex] - streams.PositionWS;
-            float lightVectorLength = length(lightVector);
-            float3 lightVectorNorm = lightVector / lightVectorLength;
+            // TODO: Workaraound for SPIR-V compiler. Revert later
+            SpotLightDataInternal data;
+            data.PositionWS = Lights[lightIndex].PositionWS;
+            data.DirectionWS = Lights[lightIndex].DirectionWS;
+            data.AngleOffsetAndInvSquareRadius = Lights[lightIndex].AngleOffsetAndInvSquareRadius;
+            data.Color = Lights[lightIndex].Color;
 
-            float3 lightAngleOffsetAndInvSquareRadius = LightAngleOffsetAndInvSquareRadius[lightIndex];
-            float2 lightAngleAndOffset = lightAngleOffsetAndInvSquareRadius.xy;
-            float lightInvSquareRadius = lightAngleOffsetAndInvSquareRadius.z;
-
-            // TODO: Add support for disk based Directional light
-            float3 lightDirection = -LightDirectionsWS[lightIndex];
-
-            float attenuation = 1;
-            attenuation *= GetDistanceAttenuation(lightVector , lightInvSquareRadius);
-            attenuation *= GetAngleAttenuation(lightVectorNorm, lightDirection, lightAngleAndOffset.x, lightAngleAndOffset.y);
-
-            streams.lightColor = LightColor[lightIndex] * attenuation;
-            streams.lightDirectionWS = lightDirection;
+            ProcessLight(data);
         }
     };
 }

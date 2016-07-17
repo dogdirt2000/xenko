@@ -20,9 +20,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
 {
     public partial class TestRunner
     {
-        public const string XenkoServerIp = "XENKO_SERVER_IP";
-
-        public const string XenkoServerPort = "XENKO_SERVER_PORT";
+        public const string XenkoVersion = "XENKO_VERSION";
 
         public const string XenkoBuildNumber = "XENKO_BUILD_NUMBER";
 
@@ -50,13 +48,17 @@ namespace SiliconStudio.Xenko.Graphics.Regression
 #if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP
             result.Platform = "Windows";
             result.Serial = Environment.MachineName;
-#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D
+    #if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D12
+            result.DeviceName = "Direct3D12";
+    #elif SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D11
             result.DeviceName = "Direct3D";
-#elif SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGLES
+    #elif SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGLES
             result.DeviceName = "OpenGLES";
-#elif SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGL
+    #elif SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGL
             result.DeviceName = "OpenGL";
-#endif
+    #elif SILICONSTUDIO_XENKO_GRAPHICS_API_VULKAN
+            result.DeviceName = "Vulkan";
+    #endif
 #elif SILICONSTUDIO_PLATFORM_ANDROID
             result.Platform = "Android";
             result.DeviceName = Android.OS.Build.Manufacturer + " " + Android.OS.Build.Model;
@@ -66,11 +68,13 @@ namespace SiliconStudio.Xenko.Graphics.Regression
             result.DeviceName = iOSDeviceType.Version.ToString();
             result.Serial = UIKit.UIDevice.CurrentDevice.Name;
 #elif SILICONSTUDIO_PLATFORM_WINDOWS_RUNTIME
-#if SILICONSTUDIO_PLATFORM_WINDOWS_PHONE
+    #if SILICONSTUDIO_PLATFORM_WINDOWS_PHONE
             result.Platform = "WindowsPhone";
-#elif SILICONSTUDIO_PLATFORM_WINDOWS_STORE
+    #elif SILICONSTUDIO_PLATFORM_WINDOWS_STORE
             result.Platform = "WindowsStore";
-#endif
+    #else
+            result.Platform = "Windows10";
+    #endif
             var deviceInfo = new EasClientDeviceInformation();
             result.DeviceName = deviceInfo.SystemManufacturer + " " + deviceInfo.SystemProductName;
             try
@@ -79,13 +83,17 @@ namespace SiliconStudio.Xenko.Graphics.Regression
             }
             catch (Exception)
             {
+    #if SILICONSTUDIO_PLATFORM_WINDOWS_PHONE || SILICONSTUDIO_PLATFORM_WINDOWS_STORE
                 var token = HardwareIdentification.GetPackageSpecificToken(null);
                 var hardwareId = token.Id;
 
                 var hasher = HashAlgorithmProvider.OpenAlgorithm("MD5");
                 var hashed = hasher.HashData(hardwareId);
 
-                result.Serial =  CryptographicBuffer.EncodeToHexString(hashed);
+                result.Serial = CryptographicBuffer.EncodeToHexString(hashed);
+    #else
+                // Ignored on Windows 10
+    #endif
             }
 #endif
 
@@ -136,6 +144,8 @@ namespace SiliconStudio.Xenko.Graphics.Regression
             return TestPlatform.WindowsOgles;
 #elif SILICONSTUDIO_XENKO_GRAPHICS_API_OPENGL
             return TestPlatform.WindowsOgl;
+#elif SILICONSTUDIO_XENKO_GRAPHICS_API_VULKAN
+            return TestPlatform.WindowsVulkan;
 #endif
 
         }
@@ -177,85 +187,6 @@ namespace SiliconStudio.Xenko.Graphics.Regression
         }
     }
 
-    public class TestResultImage
-    {
-        public string TestName;
-        public string CurrentVersion;
-        public string Frame;
-
-        // Image
-        public Image Image;
-
-        public TestResultImage()
-        {
-        }
-
-        public unsafe void Read(BinaryReader reader)
-        {
-            TestName = reader.ReadString();
-            CurrentVersion = reader.ReadString();
-            Frame = reader.ReadString();
-
-            // Read image header
-            var width = reader.ReadInt32();
-            var height = reader.ReadInt32();
-            var format = (PixelFormat)reader.ReadInt32();
-            var textureSize = reader.ReadInt32();
-
-            // Read image data
-            var imageData = new byte[textureSize];
-            var copiedSize = 0;
-            using (var lz4Stream = new LZ4Stream(new BlockingBufferStream(reader.BaseStream), CompressionMode.Decompress, false, textureSize))
-            {
-                lz4Stream.Read(imageData, copiedSize, textureSize - copiedSize);
-            }
-
-            var pinnedImageData = GCHandle.Alloc(imageData, GCHandleType.Pinned);
-            var description = new ImageDescription
-            {
-                Dimension = TextureDimension.Texture2D,
-                Width = width,
-                Height = height,
-                ArraySize = 1,
-                Depth = 1,
-                Format = format,
-                MipLevels = 1,
-            };
-            Image = Image.New(description, pinnedImageData.AddrOfPinnedObject(), 0, pinnedImageData, false);
-        }
-
-        public void Write(BinaryWriter writer)
-        {
-            writer.Write(TestName);
-            writer.Write(CurrentVersion);
-            writer.Write(Frame);
-            
-            // This call returns the pixels without any extra stride
-            var pixels = Image.PixelBuffer[0].GetPixels<byte>();
-
-            writer.Write(Image.PixelBuffer[0].Width);
-            writer.Write(Image.PixelBuffer[0].Height);
-            writer.Write((int)Image.PixelBuffer[0].Format);
-            writer.Write(pixels.Length);
-
-            var sw = new Stopwatch();
-
-            sw.Start();
-            // Write image data
-            var lz4Stream = new LZ4Stream(writer.BaseStream, CompressionMode.Compress, false, pixels.Length);
-            lz4Stream.Write(pixels, 0, pixels.Length);
-            lz4Stream.Flush();
-            writer.BaseStream.Flush();
-            sw.Stop();
-#if SILICONSTUDIO_PLATFORM_WINDOWS_DESKTOP
-            Console.WriteLine("Total calculation time: {0}", sw.Elapsed);
-#else
-            GameTestBase.TestGameLogger.Info("Total calculation time: {0}", sw.Elapsed);
-#endif
-            //writer.Write(pixels, 0, pixels.Length);
-        }
-    }
-
     public struct ImageInformation
     {
         public int Width;
@@ -273,6 +204,7 @@ namespace SiliconStudio.Xenko.Graphics.Regression
         WindowsDx,
         WindowsOgl,
         WindowsOgles,
+        WindowsVulkan,
         WindowsStore,
         WindowsPhone,
         Android,

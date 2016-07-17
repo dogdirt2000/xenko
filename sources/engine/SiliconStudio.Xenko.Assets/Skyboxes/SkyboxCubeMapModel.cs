@@ -30,11 +30,17 @@ namespace SiliconStudio.Xenko.Assets.Skyboxes
 
         public ShaderSource Generate(SkyboxGeneratorContext context)
         {
+            // If the skybox is only used for lighting, don't generate a shader for the background
+            if (context.Skybox.Usage == SkyboxUsage.Lighting)
+            {
+                return null;
+            }
+
             var key = context.GetTextureKey(CubeMap, SkyboxKeys.CubeMap);
             return new ShaderClassSource("ComputeSkyboxCubeMapColor", key);
         }
 
-        public IEnumerable<IContentReference> GetDependencies()
+        public IEnumerable<IReference> GetDependencies()
         {
             if (CubeMap != null)
             {

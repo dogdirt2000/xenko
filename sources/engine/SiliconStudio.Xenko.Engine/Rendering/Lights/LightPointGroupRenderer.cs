@@ -1,6 +1,8 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
+using System;
+using SiliconStudio.Core.Collections;
 using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Xenko.Engine;
 using SiliconStudio.Xenko.Graphics;
@@ -9,108 +11,106 @@ using SiliconStudio.Xenko.Shaders;
 
 namespace SiliconStudio.Xenko.Rendering.Lights
 {
-    public class LightPointGroupRenderer : LightGroupRendererBase
+    public struct PointLightData
     {
-        private const int StaticLightMaxCount = 8;
+        public Vector3 PositionWS;
+        public float InvSquareRadius;
+        public Color3 Color;
+        private float padding0;
+    }
 
-        private static readonly ShaderClassSource DynamicDirectionalGroupShaderSource = new ShaderClassSource("LightPointGroup", StaticLightMaxCount);
-
-        public LightPointGroupRenderer()
-        {
-            LightMaxCount = StaticLightMaxCount;
-            CanHaveShadows = true;
-        }
-
+    /// <summary>
+    /// Light renderer for <see cref="LightPoint"/>.
+    /// </summary>
+    public class LightPointGroupRenderer : LightGroupRendererDynamic
+    {
         public override void Initialize(RenderContext context)
         {
-            var isLowProfile = context.GraphicsDevice.Features.Profile < GraphicsProfile.Level_10_0;
-            LightMaxCount = isLowProfile ? 2 : StaticLightMaxCount;
-            AllocateLightMaxCount = !isLowProfile;
         }
 
-        public override LightShaderGroup CreateLightShaderGroup(string compositionName, int lightMaxCount, ILightShadowMapShaderGroupData shadowGroup)
+        public override LightShaderGroupDynamic CreateLightShaderGroup(RenderDrawContext context, ILightShadowMapShaderGroupData shadowGroup)
         {
-            var mixin = new ShaderMixinSource();
-            if (AllocateLightMaxCount)
-            {
-                mixin.Mixins.Add(DynamicDirectionalGroupShaderSource);
-            }
-            else
-            {
-                mixin.Mixins.Add(new ShaderClassSource("LightPointGroup", lightMaxCount));
-                mixin.Mixins.Add(new ShaderClassSource("DirectLightGroupFixed", lightMaxCount));
-            }
-
-            if (shadowGroup != null)
-            {
-                shadowGroup.ApplyShader(mixin);
-            }
-
-            return new SpotLightShaderGroup(mixin, compositionName, shadowGroup);
+            return new PointLightShaderGroup(context.RenderContext, shadowGroup);
         }
 
-        class SpotLightShaderGroup : LightShaderGroupAndDataPool<SpotLightShaderGroupData>
+        class PointLightShaderGroup : LightShaderGroupDynamic
         {
-            internal readonly ParameterKey<int> CountKey;
-            internal readonly ParameterKey<Vector3[]> PositionsKey;
-            internal readonly ParameterKey<float[]> InvSquareRadiusKey;
-            internal readonly ParameterKey<Color3[]> ColorsKey;
+            private ValueParameterKey<int> countKey;
+            private ValueParameterKey<PointLightData> lightsKey;
+            private FastListStruct<PointLightData> lightsData = new FastListStruct<PointLightData>(8);
 
-            public SpotLightShaderGroup(ShaderMixinSource mixin, string compositionName, ILightShadowMapShaderGroupData shadowGroupData)
-                : base(mixin, compositionName, shadowGroupData)
+            public PointLightShaderGroup(RenderContext renderContext, ILightShadowMapShaderGroupData shadowGroupData)
+                : base(renderContext, shadowGroupData)
             {
-                CountKey = DirectLightGroupKeys.LightCount.ComposeWith(compositionName);
-                PositionsKey = LightPointGroupKeys.LightPositionWS.ComposeWith(compositionName);
-                InvSquareRadiusKey = LightPointGroupKeys.LightInvSquareRadius.ComposeWith(compositionName); 
-                ColorsKey = LightPointGroupKeys.LightColor.ComposeWith(compositionName);
             }
 
-            protected override SpotLightShaderGroupData CreateData()
+            public override void UpdateLayout(string compositionName)
             {
-                return new SpotLightShaderGroupData(this, ShadowGroup);
-            }
-        }
+                base.UpdateLayout(compositionName);
 
-        class SpotLightShaderGroupData : LightShaderGroupData
-        {
-            private readonly ParameterKey<int> countKey;
-            private readonly ParameterKey<Color3[]> colorsKey;
-            private readonly ParameterKey<Vector3[]> positionsKey;
-            private readonly ParameterKey<float[]> invSquareRadiusKey;
-            private readonly Vector3[] lightDirections;
-            private readonly Vector3[] lightPositions;
-            private readonly float[] invSquareRadius;
-            private readonly Color3[] lightColors;
-
-            public SpotLightShaderGroupData(SpotLightShaderGroup group, ILightShadowMapShaderGroupData shadowGroupData)
-                : base(shadowGroupData)
-            {
-                countKey = group.CountKey;
-                colorsKey = group.ColorsKey;
-                positionsKey = group.PositionsKey;
-                invSquareRadiusKey = group.InvSquareRadiusKey;
-
-                lightDirections = new Vector3[StaticLightMaxCount];
-                lightColors = new Color3[StaticLightMaxCount];
-                lightPositions = new Vector3[StaticLightMaxCount];
-                invSquareRadius = new float[StaticLightMaxCount];
+                countKey = DirectLightGroupPerDrawKeys.LightCount.ComposeWith(compositionName);
+                lightsKey = LightPointGroupKeys.Lights.ComposeWith(compositionName);
             }
 
-            protected override void AddLightInternal(LightComponent light)
+            protected override void UpdateLightCount()
             {
-                var pointLight = (LightPoint)light.Type;
-                lightDirections[Count] = light.Direction;
-                lightColors[Count] = light.Color;
-                lightPositions[Count] = light.Position;
-                invSquareRadius[Count] = pointLight.InvSquareRadius;
+                base.UpdateLightCount();
+
+                var mixin = new ShaderMixinSource();
+                mixin.Mixins.Add(new ShaderClassSource("LightPointGroup", LightCurrentCount));
+                // Old fixed path kept in case we need it again later
+                //mixin.Mixins.Add(new ShaderClassSource("LightPointGroup", LightCurrentCount));
+                //mixin.Mixins.Add(new ShaderClassSource("DirectLightGroupFixed", LightCurrentCount));
+                ShadowGroup?.ApplyShader(mixin);
+
+                ShaderSource = mixin;
             }
 
-            protected override void ApplyParametersInternal(ParameterCollection parameters)
+            /// <inheritdoc/>
+            public override int AddView(int viewIndex, RenderView renderView, int lightCount)
             {
-                parameters.Set(countKey, Count);
-                parameters.Set(colorsKey, lightColors);
-                parameters.Set(positionsKey, lightPositions);
-                parameters.Set(invSquareRadiusKey, invSquareRadius);
+                base.AddView(viewIndex, renderView, lightCount);
+
+                // We allow more lights than LightCurrentCount (they will be culled)
+                return lightCount;
+            }
+
+            public override void ApplyDrawParameters(RenderDrawContext context, int viewIndex, ParameterCollection parameters, ref BoundingBoxExt boundingBox)
+            {
+                CurrentLights.Clear();
+                var lightRange = LightRanges[viewIndex];
+                for (int i = lightRange.Start; i < lightRange.End; ++i)
+                    CurrentLights.Add(Lights[i]);
+
+                base.ApplyDrawParameters(context, viewIndex, parameters, ref boundingBox);
+
+                // TODO: Since we cull per object, we could maintain a higher number of allowed light than the shader support (i.e. 4 lights active per object even though the scene has many more of them)
+                // TODO: Octree structure to select best lights quicker
+                var boundingBox2 = (BoundingBox)boundingBox;
+                foreach (var lightEntry in CurrentLights)
+                {
+                    var light = lightEntry.Light;
+
+                    if (light.BoundingBox.Intersects(ref boundingBox2))
+                    {
+                        var pointLight = (LightPoint)light.Type;
+                        lightsData.Add(new PointLightData
+                        {
+                            PositionWS = light.Position,
+                            InvSquareRadius = pointLight.InvSquareRadius,
+                            Color = light.Color,
+                        });
+
+                        // Did we reach max number of simultaneous lights?
+                        // TODO: Still collect everything but sort by importance and remove the rest?
+                        if (lightsData.Count >= LightCurrentCount)
+                            break;
+                    }
+                }
+
+                parameters.Set(countKey, lightsData.Count);
+                parameters.Set(lightsKey, lightsData.Count, ref lightsData.Items[0]);
+                lightsData.Clear();
             }
         }
     }

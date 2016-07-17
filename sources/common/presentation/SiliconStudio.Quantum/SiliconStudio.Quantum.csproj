@@ -25,20 +25,28 @@
     <Compile Include="CombineMode.cs" />
     <Compile Include="Commands\CreateNewInstanceCommand.cs" />
     <Compile Include="Commands\ChangeValueCommand.cs" />
-    <Compile Include="Commands\NodeCommand.cs" />
+    <Compile Include="Commands\MoveItemCommand.cs" />
+    <Compile Include="Commands\NodeCommandBase.cs" />
     <Compile Include="Commands\RenameStringKeyCommand.cs" />
-    <Compile Include="Commands\UncancellableCommand.cs" />
+    <Compile Include="Contents\Content.cs" />
+    <Compile Include="Contents\ContentChangeEventArgs.cs" />
+    <Compile Include="Contents\GraphContentChangeEventArgs.cs" />
     <Compile Include="DefaultContentFactory.cs" />
+    <Compile Include="DynamicNode.cs" />
+    <Compile Include="GraphNodeChangeListener.cs" />
+    <Compile Include="GraphNodeLinker.cs" />
+    <Compile Include="GraphVisitorBase.cs" />
     <Compile Include="IContentFactory.cs" />
+    <Compile Include="IContentNode.cs" />
     <Compile Include="IModelBuilderPlugin.cs" />
     <Compile Include="IGuidContainer.cs" />
+    <Compile Include="Index.cs" />
     <Compile Include="INodeBuilder.cs" />
-    <Compile Include="Contents\IUpdatableContent.cs" />
-    <Compile Include="NodeConstructedArgs.cs" />
+    <Compile Include="INodeContainer.cs" />
     <Compile Include="NodeConstructingArgs.cs" />
     <Compile Include="QuantumConsistencyException.cs" />
     <Compile Include="ModelConsistencyCheckVisitor.cs" />
-    <Compile Include="ModelNodePath.cs" />
+    <Compile Include="GraphNodePath.cs" />
     <Compile Include="Contents\BoxedContent.cs" />
     <Compile Include="References\IReference.cs" />
     <Compile Include="Commands\INodeCommand.cs" />
@@ -47,19 +55,17 @@
     <Compile Include="Contents\MemberContent.cs" />
     <Compile Include="Contents\ObjectContent.cs" />
     <Compile Include="Contents\ContentBase.cs" />
-    <Compile Include="Contents\ViewModelContentSerializeFlags.cs" />
-    <Compile Include="Contents\ViewModelContentState.cs" />
-    <Compile Include="IModelNode.cs" />
+    <Compile Include="IGraphNode.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="References\Reference.cs" />
     <Compile Include="References\ReferenceEnumerable.cs" />
     <Compile Include="Commands\RemoveItemCommand.cs" />
-    <Compile Include="DefaultModelBuilder.cs" />
-    <Compile Include="ModelContainer.cs" />
+    <Compile Include="DefaultNodeBuilder.cs" />
+    <Compile Include="NodeContainer.cs" />
     <Compile Include="DebugExtensions.cs" />
-    <Compile Include="ModelNodeExtensions.cs" />
+    <Compile Include="GraphNodeExtensions.cs" />
     <Compile Include="GuidContainer.cs" />
-    <Compile Include="ModelNode.cs" />
+    <Compile Include="GraphNode.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\core\SiliconStudio.Core.Design\SiliconStudio.Core.Design.csproj">
@@ -77,11 +83,9 @@
       <Name>SiliconStudio.Core</Name>
       <Private>False</Private>
     </ProjectReference>
-    <ProjectReference Include="..\SiliconStudio.ActionStack\SiliconStudio.ActionStack.csproj">
-      <Project>{E9C3ADC8-3F13-4673-AAA8-A0E97419DB5B}</Project>
-      <Name>SiliconStudio.ActionStack</Name>
-      <Private>False</Private>
-    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <Import Project="$(SiliconStudioPostSettingsTargets)" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

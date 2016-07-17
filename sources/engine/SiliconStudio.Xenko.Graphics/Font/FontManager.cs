@@ -62,7 +62,7 @@ namespace SiliconStudio.Xenko.Graphics.Font
         /// <summary>
         /// The asset manager used to load the ttf fonts.
         /// </summary>
-        private readonly AssetManager assetManager;
+        private readonly ContentManager contentManager;
 
         /// <summary>
         /// The size of the transparent border to add around the character bitmap.
@@ -78,7 +78,7 @@ namespace SiliconStudio.Xenko.Graphics.Font
         /// </summary>
         public FontManager()
         {
-            assetManager = new AssetManager();
+            contentManager = new ContentManager();
 
             // Preload proper freetype native library (depending on CPU type)
             Core.NativeLibrary.PreloadLibrary("freetype.dll");
@@ -147,7 +147,7 @@ namespace SiliconStudio.Xenko.Graphics.Font
                 fontFace.LoadGlyph(glyphIndex, LoadFlags.Default, LoadTarget.Normal);
 
                 // set glyph information
-                character.Glyph.XAdvance = fontFace.Glyph.Advance.X / 64f;
+                character.Glyph.XAdvance = fontFace.Glyph.Advance.X.ToSingle();
 
                 // render the bitmap
                 if (renderBitmap)
@@ -188,7 +188,7 @@ namespace SiliconStudio.Xenko.Graphics.Font
             // calculate and set the size of the font
             // size is in 26.6 factional points (that is in 1/64th of points)
             // 72 => the sizes are in "points" (=1/72 inch), setting resolution to 72 dpi let us specify the size in pixels directly
-            fontFace.SetCharSize((int)Math.Ceiling(size.X * 64), (int)Math.Ceiling(size.Y * 64), 72, 72);
+            fontFace.SetCharSize(size.X, size.Y, 72, 72);
         }
 
         /// <summary>
@@ -278,7 +278,7 @@ namespace SiliconStudio.Xenko.Graphics.Font
                 return;
 
             // load the font from the data base
-            using (var fontStream = assetManager.OpenAsStream(fontPath, StreamFlags.None))
+            using (var fontStream = contentManager.OpenAsStream(fontPath, StreamFlags.None))
             {
                 // create the font data from the stream
                 var newFontData = new byte[fontStream.Length];

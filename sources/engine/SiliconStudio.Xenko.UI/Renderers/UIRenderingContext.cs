@@ -15,6 +15,11 @@ namespace SiliconStudio.Xenko.UI.Renderers
     public class UIRenderingContext
     {
         /// <summary>
+        /// The active graphics context.
+        /// </summary>
+        public GraphicsContext GraphicsContext { get; set; }
+
+        /// <summary>
         /// The current time.
         /// </summary>
         public GameTime Time { get; internal set; }
@@ -48,16 +53,6 @@ namespace SiliconStudio.Xenko.UI.Renderers
         /// Gets the  virtual resolution of the UI.
         /// </summary>
         public Vector3 Resolution;
-
-        /// <summary>
-        /// Gets the view matrix of the UI.
-        /// </summary>
-        public Matrix ViewMatrix;
-
-        /// <summary>
-        /// Gets the projection matrix of the UI.
-        /// </summary>
-        public Matrix ProjectionMatrix;
 
         /// <summary>
         /// Gets the view projection matrix of the UI.

@@ -1,17 +1,12 @@
 ﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-
 using SiliconStudio.Assets;
 using SiliconStudio.Assets.Compiler;
 using SiliconStudio.Core;
 using SiliconStudio.Core.Annotations;
-using SiliconStudio.Core.IO;
-using SiliconStudio.Core.Reflection;
-using SiliconStudio.Xenko.Graphics.Font;
+using SiliconStudio.Core.Yaml;
 
 namespace SiliconStudio.Xenko.Assets.SpriteFont
 {
@@ -21,70 +16,38 @@ namespace SiliconStudio.Xenko.Assets.SpriteFont
     [DataContract("SpriteFont")]
     [AssetDescription(FileExtension)]
     [AssetCompiler(typeof(SpriteFontAssetCompiler))]
-    [ObjectFactory(typeof(SpriteFontFactory))]
+    [AssetFormatVersion(XenkoConfig.PackageName, "1.7.0-beta04")]
+    [AssetUpgrader(XenkoConfig.PackageName, "0.0.0", "1.5.0-alpha09", typeof(PremultiplyUpgrader))]
+    [AssetUpgrader(XenkoConfig.PackageName, "1.5.0-alpha09", "1.7.0-beta02", typeof(FontTypeUpgrader))]
+    [AssetUpgrader(XenkoConfig.PackageName, "1.7.0-beta02", "1.7.0-beta03", typeof(FontClassUpgrader))]
+    [AssetUpgrader(XenkoConfig.PackageName, "1.7.0-beta03", "1.7.0-beta04", typeof(FontSizeUpgrader))]
     [Display(140, "Sprite Font")]
     [CategoryOrder(10, "Font")]
-    [CategoryOrder(20, "Characters")]
     [CategoryOrder(30, "Rendering")]
-    public class SpriteFontAsset : Asset
+    public partial class SpriteFontAsset : Asset
     {
         /// <summary>
         /// The default file extension used by the <see cref="SpriteFontAsset"/>.
         /// </summary>
         public const string FileExtension = ".xkfnt;.pdxfnt";
 
-        /// <summary>
-        /// Gets or sets the source file containing the font data. This can be a TTF file or a bitmap file.
-        /// If null, <see cref="FontName"/> is used to determine the font source.
-        /// </summary>
-        /// <value>The source.</value>
-        /// <userdoc>
-        /// The path to the file containing the font data to use.
-        /// </userdoc>
+        [NotNull]
         [DataMember(10)]
         [Display(null, "Font")]
-        public UFile Source { get; set; }
+        public FontProviderBase FontSource { get; set; } = new SystemFontProvider();
 
         /// <summary>
-        /// Gets or sets the name of the font family to use when the <see cref="Source"/> is not specified.
+        ///  Gets or sets the value determining if and how the characters are pre-generated off-line or at run-time.
         /// </summary>
         /// <userdoc>
-        /// The name of the font family to use. Only the fonts installed on the system can be used here.
-        /// </userdoc>
-        [DataMember(20)]
-        [Display(null, "Font")]
-        public string FontName { get; set; }
-
-        /// <summary>
-        ///  Gets or sets the size in points of the font (ignored when converting a bitmap font).
-        /// </summary>
-        /// <userdoc>
-        /// The size of the font (in points) for static fonts, the default size for dynamic fonts. This property is ignored when the font source is a bitmap.
-        /// </userdoc>
-        [DataMember(30)]
-        [Display(null, "Font")]
-        public float Size { get; set; }
-        
-        /// <summary>
-        /// Gets or sets the style of the font. A combination of 'regular', 'bold', 'italic'. Default is 'regular'.
-        /// </summary>
-        /// <userdoc>
-        /// The style of the font (regular / bold / italic). Note that this property is ignored is the desired style is not available in the font's source file.
-        /// </userdoc>
-        [DataMember(40)]
-        [Display(null, "Font")]
-        public FontStyle Style { get; set; }
-
-        /// <summary>
-        ///  Gets or sets the value determining if the characters are pre-generated off-line or at run-time.
-        /// </summary>
-        /// <userdoc>
-        /// If checked, the font textures are generated at execution time. If not, at project build time.
-        /// Note that it is not possible to resize at execution time a font that is not dynamic.
+        /// Static font has fixed font size and is pre-compiled
+        /// Dynamic font which can change its font size at runtime and is also compiled at runtime
+        /// Signed Distance Field font is pre-compiled but can still be scaled at runtime
         /// </userdoc>
         [DataMember(50)]
+        [NotNull]
         [Display(null, "Font")]
-        public bool IsDynamic { get; set; }
+        public SpriteFontTypeBase FontType { get; set; } = new OfflineRasterizedSpriteFontType();
 
         /// <summary>
         /// Gets or sets the fallback character used when asked to render a character that is not
@@ -94,63 +57,9 @@ namespace SiliconStudio.Xenko.Assets.SpriteFont
         /// The fallback character to use when a given character is not available in the font file data.
         /// </userdoc>
         [DataMember(60)]
-        [Display(null, "Characters")]
-        public char DefaultCharacter { get; set; }
-        
-        /// <summary>
-        ///  Gets or sets the text file referencing which characters to include when generating the static fonts (eg. "ABCDEF...")
-        /// </summary>
-        /// <userdoc>
-        /// The path to a file containing the characters to import from the font source file. This property is ignored when 'IsDynamic' is checked.
-        /// </userdoc>
-        [DataMember(70)]
-        [Display(null, "Characters")]
-        public UFile CharacterSet { get; set; }
-
-        /// <summary>
-        /// Gets or set the additional character ranges to include when generating the static fonts (eg. "/CharacterRegion:0x20-0x7F /CharacterRegion:0x123")
-        /// </summary>
-        /// <userdoc>
-        /// The list of series of character to import from the font source file. This property is ignored when 'IsDynamic' is checked.
-        /// Note that this property only represents an alternative way of indicating character to import, the result is the same as using the 'CharacterSet' property.
-        /// </userdoc>
-        [DataMember(80)]
-        [Category]
-        [Display(null, "Characters")]
-        public List<CharacterRegion> CharacterRegions { get; set; }
-
-        /// <summary>
-        /// Gets or sets format of the texture used to render the font.
-        /// </summary>
-        /// <userdoc>
-        /// The format of the texture used to render the Font. This property is currently ignored for dynamic fonts.
-        /// </userdoc>
-        [DataMember(100)]
-        [DefaultValue(FontTextureFormat.Rgba32)]
-        [Display(null, "Rendering")]
-        public FontTextureFormat Format { get; set; }
-
-        /// <summary>
-        /// Gets or sets the font anti-aliasing mode. By default, levels of grays are used.
-        /// </summary>
-        /// <userdoc>
-        /// The type of anti-aliasing to use when rendering the font. 
-        /// </userdoc>
-        [DataMember(110)]
-        [Display(null, "Rendering")]
-        public FontAntiAliasMode AntiAlias { get; set; }
-
-        /// <summary>
-        /// Gets or sets the value indicating if the font texture should be generated pre-multiplied by alpha component. 
-        /// </summary>
-        /// <userdoc>
-        /// If checked, the texture generated for this font is not pre-multiplied by the alpha component.
-        /// Check this property if you prefer to use interpolative alpha blending when rendering the font.
-        /// </userdoc>
-        [DataMember(120)]
-        [DataAlias("NoPremultiply")]
-        [Display("Not Premultiply", "Rendering")]
-        public bool IsNotPremultiply { get; set; }
+        [DefaultValue(' ')]
+        [Display(null, "Font")]
+        public char DefaultCharacter { get; set; } = ' ';
 
         /// <summary>
         /// Gets or sets the extra character spacing in pixels (relative to the font size). Zero is default spacing, negative closer together, positive further apart
@@ -159,6 +68,7 @@ namespace SiliconStudio.Xenko.Assets.SpriteFont
         /// The extra spacing to add between characters in pixels. Zero is default spacing, negative closer together, positive further apart.
         /// </userdoc>
         [DataMember(130)]
+        [DefaultValue(0.0f)]
         [DataMemberRange(-500, 500, 1, 10)]
         [Display(null, "Rendering")]
         public float Spacing { get; set; }
@@ -170,6 +80,7 @@ namespace SiliconStudio.Xenko.Assets.SpriteFont
         /// The extra interline space to add at each return of line (in pixels). Zero is default spacing, negative closer together, positive further apart.
         /// </userdoc>
         [DataMember(140)]
+        [DefaultValue(0.0f)]
         [DataMemberRange(-500, 500, 1, 10)]
         [Display(null, "Rendering")]
         public float LineSpacing { get; set; }
@@ -185,7 +96,7 @@ namespace SiliconStudio.Xenko.Assets.SpriteFont
         [DefaultValue(1.0f)]
         [DataMemberRange(-500, 500, 1, 10)]
         [Display(null, "Rendering")]
-        public float LineGapFactor { get; set; }
+        public float LineGapFactor { get; set; } = 1.0f;
 
         /// <summary>
         /// Gets or sets the factor to apply to LineGap when calculating the font base line. See remarks. Default is <c>1.0f</c>
@@ -204,53 +115,22 @@ namespace SiliconStudio.Xenko.Assets.SpriteFont
         [DefaultValue(1.0f)]
         [DataMemberRange(-500, 500, 1, 10)]
         [Display(null, "Rendering")]
-        public float LineGapBaseLineFactor { get; set; }
+        public float LineGapBaseLineFactor { get; set; } = 1.0f;
 
-        /// <summary>
-        /// Gets or sets the value specifying whether to use kerning information when rendering the font. Default value is false (NOT SUPPORTED YET).
-        /// </summary>
-        /// <userdoc>
-        /// If checked, kerning information is imported from the font. (NOT SUPPORTED YET)
-        /// </userdoc>
-        [DataMember(170)]
-        [Display(null, "Rendering")]
-        public bool UseKerning { get; set; }
-
-        public SpriteFontAsset()
+        class PremultiplyUpgrader : AssetUpgraderBase
         {
-            DefaultCharacter = ' ';
-            Style = FontStyle.Regular;
-            CharacterRegions = new List<CharacterRegion>();
-            LineGapFactor = 1.0f;
-            LineGapBaseLineFactor = 1.0f;
-            Source = new UFile("");
-            CharacterSet = new UFile("");
-        }
-
-        /// <summary>
-        /// Creates a default instance.
-        /// </summary>
-        /// <returns>A default instance of <see cref="SpriteFontAsset"/>.</returns>
-        public static SpriteFontAsset Default()
-        {
-            var font = new SpriteFontAsset
-                {
-                    Format = FontTextureFormat.Rgba32,
-                    FontName = "Arial",
-                    Size = 16,
-                };
-            font.CharacterRegions.Add(new CharacterRegion(' ', (char)127));
-
-            return font;
-        }
-
-        internal string SafeCharacterSet { get { return CharacterSet ?? ""; } }
-        
-        private class SpriteFontFactory : IObjectFactory
-        {
-            public object New(Type type)
+            protected override void UpgradeAsset(AssetMigrationContext context, PackageVersion currentVersion, PackageVersion targetVersion, dynamic asset, PackageLoadingAssetFile assetFile, OverrideUpgraderHint overrideHint)
             {
-                return Default();
+                if (asset.NoPremultiply != null)
+                {
+                    asset.IsPremultiplied = !(bool)asset.NoPremultiply;
+                    asset.NoPremultiply = DynamicYamlEmpty.Default;
+                }
+                if (asset.IsNotPremultiply != null)
+                {
+                    asset.IsPremultiplied = !(bool)asset.IsNotPremultiply;
+                    asset.IsNotPremultiply = DynamicYamlEmpty.Default;
+                }
             }
         }
     }

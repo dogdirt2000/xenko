@@ -82,13 +82,16 @@ namespace SiliconStudio.Core.Diagnostics
         /// <value>The caller information.</value>
         public CallerInfo CallerInfo { get; set; }
 
+        /// <inheritdoc/>
+        public ExceptionInfo ExceptionInfo => Exception != null ? new ExceptionInfo(Exception) : null;
+
         /// <summary>
         /// Returns a <see cref="System.String" /> that represents this instance.
         /// </summary>
         /// <returns>A <see cref="System.String" /> that represents this instance.</returns>
         public override string ToString()
         {
-            return string.Format("[{0}]: {1}: {2}{3}", Module, Type, Text, Exception == null ? string.Empty : string.Format(". {0}", Exception));
+            return $"[{Module}]: {Type}: {Text}{(Exception == null ? string.Empty : $". {Exception}")}";
         }
     }
 }

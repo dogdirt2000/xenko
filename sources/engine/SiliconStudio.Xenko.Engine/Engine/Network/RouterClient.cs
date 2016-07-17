@@ -48,14 +48,14 @@ namespace SiliconStudio.Xenko.Engine.Network
             var result = (ClientRouterMessage)await socketContext.ReadStream.ReadInt16Async();
             if (result != ClientRouterMessage.ServerStarted)
             {
-                throw new InvalidOperationException("Could not connect to server");
+                throw new SimpleSocketException("Could not connect to server");
             }
 
             var errorCode = await socketContext.ReadStream.ReadInt32Async();
             if (errorCode != 0)
             {
                 var errorMessage = await socketContext.ReadStream.ReadStringAsync();
-                throw new InvalidOperationException(errorMessage);
+                throw new SimpleSocketException(errorMessage);
             }
 
             return socketContext;
@@ -79,11 +79,17 @@ namespace SiliconStudio.Xenko.Engine.Network
 
                 try
                 {
+#if SILICONSTUDIO_PLATFORM_WINDOWS_10 || SILICONSTUDIO_PLATFORM_WINDOWS_PHONE || SILICONSTUDIO_PLATFORM_WINDOWS_STORE
+                    var serverAddress = "127.0.0.1";
+#else
+                    var serverAddress = Environment.GetEnvironmentVariable("XenkoConnectionRouterRemoteIP") ?? "127.0.0.1";
+#endif
+
                     // If connecting as a client, try once, otherwise try to listen multiple time (in case port is shared)
                     switch (ConnectionMode)
                     {
                         case RouterConnectionMode.Connect:
-                            socketContext.StartClient("127.0.0.1", DefaultPort).Wait();
+                            socketContext.StartClient(serverAddress, DefaultPort).Wait();
                             break;
                         case RouterConnectionMode.Listen:
                             socketContext.StartServer(DefaultListenPort, true, 10).Wait();
@@ -92,7 +98,7 @@ namespace SiliconStudio.Xenko.Engine.Network
                             bool clientException = false;
                             try
                             {
-                                socketContext.StartClient("127.0.0.1", DefaultPort).Wait();
+                                socketContext.StartClient(serverAddress, DefaultPort).Wait();
                             }
                             catch (Exception) // Ideally we should filter SocketException, but not available on some platforms (maybe it should be wrapped in a type available on all paltforms?)
                             {
@@ -107,11 +113,11 @@ namespace SiliconStudio.Xenko.Engine.Network
                             throw new ArgumentOutOfRangeException();
                     }
 
-                    // Connection should happen within 5 seconds, otherwise consider there is no connection router trying to connect back to us
-                    if (!socketContextTCS.Task.Wait(TimeSpan.FromSeconds(5)))
-                        throw new InvalidOperationException("Connection router did not connect back to our listen socket");
+                    // Connection should happen within 10 seconds, otherwise consider there is no connection router trying to connect back to us
+                    if (!socketContextTCS.Task.Wait(TimeSpan.FromSeconds(10)))
+                        throw new SimpleSocketException("Connection router did not connect back to our listen socket");
 
-                    return socketContext;
+                    return socketContextTCS.Task.Result;
                 }
                 catch (Exception e)
                 {

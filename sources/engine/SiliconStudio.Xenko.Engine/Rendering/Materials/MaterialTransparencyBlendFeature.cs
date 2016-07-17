@@ -58,7 +58,8 @@ namespace SiliconStudio.Xenko.Rendering.Materials
             // Use pre-multiplied alpha to support both additive and alpha blending
             var blendDesc = new BlendStateDescription(Blend.One, Blend.InverseSourceAlpha);
             context.Material.HasTransparency = true;
-            context.Parameters.Set(Effect.BlendStateKey, BlendState.NewFake(blendDesc));
+            // TODO GRAPHICS REFACTOR
+            //context.Parameters.SetResourceSlow(Effect.BlendStateKey, BlendState.NewFake(blendDesc));
 
             context.SetStream(AlphaBlendStream.Stream, alpha, MaterialKeys.DiffuseSpecularAlphaBlendMap, MaterialKeys.DiffuseSpecularAlphaBlendValue, Color.White);
             context.SetStream(AlphaBlendColorStream.Stream, tint, MaterialKeys.AlphaBlendColorMap, MaterialKeys.AlphaBlendColorValue, Color.White);
@@ -72,7 +73,7 @@ namespace SiliconStudio.Xenko.Rendering.Materials
     
         private void AddDiffuseSpecularAlphaBlendColor(MaterialShaderStage stage, MaterialGeneratorContext context)
         {
-            context.AddSurfaceShader(MaterialShaderStage.Pixel, new ShaderClassSource("MaterialSurfaceDiffuseSpecularAlphaBlendColor"));
+            context.AddShaderSource(MaterialShaderStage.Pixel, new ShaderClassSource("MaterialSurfaceDiffuseSpecularAlphaBlendColor"));
         }
     }
 }

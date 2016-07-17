@@ -1,6 +1,6 @@
 // Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
-#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D
+#if SILICONSTUDIO_XENKO_GRAPHICS_API_DIRECT3D11
 using System;
 using System.Diagnostics;
 
@@ -40,12 +40,6 @@ namespace SiliconStudio.Xenko.Graphics
             }
         }
 
-        protected virtual void DestroyImpl()
-        {
-            ReleaseComObject(ref nativeDeviceChild);
-            NativeResource = null;
-        }
-
         /// <summary>
         /// Associates the private data to the device child, useful to get the name in PIX debugger.
         /// </summary>
@@ -62,6 +56,8 @@ namespace SiliconStudio.Xenko.Graphics
         /// </summary>
         protected internal virtual void OnDestroyed()
         {
+            ReleaseComObject(ref nativeDeviceChild);
+            NativeResource = null;
         }
 
         /// <summary>
@@ -105,6 +101,7 @@ namespace SiliconStudio.Xenko.Graphics
             if (iUnknownObject != null)
             {
                 var refCountResult = iUnknownObject.Release();
+                Debug.Assert(refCountResult >= 0);
                 comObject = null;
             }
         }

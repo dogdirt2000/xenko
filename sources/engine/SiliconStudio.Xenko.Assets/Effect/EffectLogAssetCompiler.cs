@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
+// Copyright (c) 2014 Silicon Studio Corp. (http://siliconstudio.co.jp)
 // This file is distributed under GPL v3. See LICENSE.md for details.
 
 using System.Collections.Generic;
@@ -10,6 +10,7 @@ using SiliconStudio.BuildEngine;
 using SiliconStudio.Core.IO;
 using SiliconStudio.Core.Serialization;
 using SiliconStudio.Core.Serialization.Assets;
+using SiliconStudio.Xenko.Graphics;
 using SiliconStudio.Xenko.Rendering;
 using SiliconStudio.Xenko.Shaders.Compiler;
 
@@ -54,13 +55,7 @@ namespace SiliconStudio.Xenko.Assets.Effect
 
                     foreach (var entry in recordedEffectCompile.GetValues())
                     {
-                        var effectCompileRequest = entry.Key;
-
-                        var compilerParameters = new CompilerParameters();
-                        effectCompileRequest.UsedParameters.CopyTo(compilerParameters);
-                        compilerParameters.Platform = context.GetGraphicsPlatform();
-                        compilerParameters.Profile = context.GetGameSettingsAsset().DefaultGraphicsProfile;
-                        steps.Add(new CommandBuildStep(new EffectCompileCommand(context, urlRoot, effectCompileRequest.EffectName, compilerParameters, package)));
+                        steps.Add(EffectCompileCommand.FromRequest(context, package, urlRoot, entry.Key));
                     }
                 }
 

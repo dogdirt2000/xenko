@@ -8,6 +8,7 @@ using Foundation;
 using UIKit;
 using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.UI.Events;
+using System.Diagnostics;
 
 namespace SiliconStudio.Xenko.UI.Controls
 {
@@ -20,7 +21,7 @@ namespace SiliconStudio.Xenko.UI.Controls
         private static EditText currentActiveEditText;
         private static UIView barView;
         private static UIView overlayView;
-        private static GameContext gameContext;
+        private static GameContextiOS gameContext;
 
         private static void InitializeStaticImpl()
         {
@@ -47,6 +48,18 @@ namespace SiliconStudio.Xenko.UI.Controls
             overlayView.BackgroundColor = new UIColor(0,0,0,0.4f);
         }
 
+        internal GameBase GetGame()
+        {
+            if (UIElementServices.Services == null)
+                throw new InvalidOperationException("services");
+
+            var game = UIElementServices.Services.GetService(typeof(IGame)) as GameBase;
+            if (game == null)
+                throw new ArgumentException("Provided services need to contain a provider for the IGame interface.");
+
+            return game;
+        }
+
         private static void TextFieldOnEditingDidBegin(object sender, EventArgs eventArgs)
         {
             overlayView.Hidden = false;
@@ -57,7 +70,7 @@ namespace SiliconStudio.Xenko.UI.Controls
                 // we need to skip some draw calls here to let the time to iOS to draw its own keyboard animations... (Thank you iOS)
                 // If we don't do this when changing the type of keyboard (split / docked / undocked), the keyboard freeze for about 5/10 seconds before updating.
                 // Note: Setting UIView.EnableAnimation to false does not solve the problem. Only animation when the keyboard appear/disappear are skipped.
-                currentActiveEditText.game.SlowDownDrawCalls = true;
+                currentActiveEditText.GetGame().SlowDownDrawCalls = true;
             }
         }
 
@@ -65,8 +78,14 @@ namespace SiliconStudio.Xenko.UI.Controls
         {
             if (gameContext == null)
             {
-                gameContext = game.Context;
-                gameContext.GameView.AddSubview(overlayView);
+                var game = GetGame();
+                if (game == null)
+                    throw new ArgumentException("Provided services need to contain a provider for the IGame interface.");
+
+                Debug.Assert(game.Context is GameContextiOS, "There is only one possible descendant of GameContext for iOS.");
+
+                gameContext = (GameContextiOS)game.Context;
+                gameContext.Control.GameView.AddSubview(overlayView);
 
                 NSNotificationCenter.DefaultCenter.AddObserver(UIDevice.OrientationDidChangeNotification, OnScreenRotated);
 
@@ -90,7 +109,7 @@ namespace SiliconStudio.Xenko.UI.Controls
             const int buttonHeight = 35;
             const int barHeight = buttonHeight + 2*spaceY;
 
-            var viewFrame = gameContext.GameView.Frame;
+            var viewFrame = gameContext.Control.GameView.Frame;
 
             barView.Frame = new RectangleF(0, 0, (int)viewFrame.Width, barHeight);
             overlayView.Frame = new RectangleF((int)viewFrame.X, (int)viewFrame.Y, 2 * (int)viewFrame.Width, (int)viewFrame.Height); // if we don't over-set width background can be seen during rotation...
@@ -108,7 +127,7 @@ namespace SiliconStudio.Xenko.UI.Controls
             if (currentActiveEditText != null)
             {
                 // Editing finished, we can now draw back to normal frame rate.
-                currentActiveEditText.game.SlowDownDrawCalls = false;
+                currentActiveEditText.GetGame().SlowDownDrawCalls = false;
             }
         }
 

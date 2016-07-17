@@ -43,6 +43,11 @@ namespace SiliconStudio.Xenko.Engine.Network
             get { return socket.RemotePort; }
         }
 
+        /// <summary>
+        /// Gets the underlying <see cref="TcpSocketClient"/> object.
+        /// </summary>
+        internal TcpSocketClient Socket => socket;
+
         // Called on a succesfull connection
         public Action<SimpleSocket> Connected;
 
@@ -104,7 +109,7 @@ namespace SiliconStudio.Xenko.Engine.Network
             }
         }
 
-        public async Task StartClient(string address, int port)
+        public async Task StartClient(string address, int port, bool needAck = true)
         {
             // Create TCP client
             var socket = new TcpSocketClient(2048);
@@ -118,7 +123,8 @@ namespace SiliconStudio.Xenko.Engine.Network
 
                 // Do an ack with magic packet (necessary so that we know it's not a dead connection,
                 // it sometimes happen when doing port forwarding because service don't refuse connection right away but only fails when sending data)
-                await SendAndReceiveAck(socket, MagicAck, MagicAck);
+                if (needAck)
+                    await SendAndReceiveAck(socket, MagicAck, MagicAck);
 
                 if (Connected != null)
                     Connected(this);
@@ -138,7 +144,7 @@ namespace SiliconStudio.Xenko.Engine.Network
             await socket.WriteStream.FlushAsync();
             var ack = (uint)await socket.ReadStream.ReadInt32Async();
             if (ack != expectedAck)
-                throw new InvalidOperationException("Invalid ack");
+                throw new SimpleSocketException("Invalid ack");
         }
 
         private void SetSocket(TcpSocketClient socket)

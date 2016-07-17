@@ -169,7 +169,7 @@ namespace SiliconStudio.Assets
         {
             // Set the package after the new AssetItem(), to make sure that isDirty is not going to call a notification on the
             // package
-            var item = new AssetItem(newLocation ?? location, newAsset ?? (Asset)AssetCloner.Clone(Asset), copyPackage ? Package : null)
+            var item = new AssetItem(newLocation ?? location, newAsset ?? (Asset)AssetCloner.Clone(Asset, AssetClonerFlags.KeepBases), copyPackage ? Package : null)
                 {
                     isDirty = isDirty,
                     SourceFolder = SourceFolder,
@@ -261,17 +261,15 @@ namespace SiliconStudio.Assets
                     ModifiedTime = DateTime.Now;
                 }
 
+                var oldValue = isDirty;
                 isDirty = value;
-                if (Package != null)
-                {
-                    Package.OnAssetDirtyChanged(asset);
-                }
+                Package?.OnAssetDirtyChanged(asset, oldValue, value);
             }
         }
 
         public override string ToString()
         {
-            return string.Format("{0}{1} => {2}", string.Format("[{0}] ", Asset.GetType().Name), location, Id);
+            return $"[{Asset.GetType().Name}] {location} => {Id}";
         }
 
         /// <summary>

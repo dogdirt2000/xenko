@@ -16,9 +16,56 @@ using Buffer = SiliconStudio.Xenko.Graphics.Buffer;
 
 using SiliconStudio.Xenko.Rendering.Data;
 using SiliconStudio.Xenko.Rendering.Materials;
-
 namespace SiliconStudio.Xenko.Rendering
 {
+    internal static partial class ShaderMixins
+    {
+        internal partial class XenkoLighting  : IShaderMixinBuilder
+        {
+            public void Generate(ShaderMixinSource mixin, ShaderMixinContext context)
+            {
+                var directLightGroups = context.GetParam(LightingKeys.DirectLightGroups);
+                if (directLightGroups != null)
+                {
+                    foreach(var directLightGroup in directLightGroups)
+
+                    {
+
+                        {
+                            var __mixinToCompose__ = (directLightGroup);
+                            var __subMixin = new ShaderMixinSource();
+                            context.PushCompositionArray(mixin, "directLightGroups", __subMixin);
+                            context.Mixin(__subMixin, __mixinToCompose__);
+                            context.PopComposition();
+                        }
+                    }
+                }
+                var environmentLights = context.GetParam(LightingKeys.EnvironmentLights);
+                if (environmentLights != null)
+                {
+                    foreach(var environmentLight in environmentLights)
+
+                    {
+
+                        {
+                            var __mixinToCompose__ = (environmentLight);
+                            var __subMixin = new ShaderMixinSource();
+                            context.PushCompositionArray(mixin, "environmentLights", __subMixin);
+                            context.Mixin(__subMixin, __mixinToCompose__);
+                            context.PopComposition();
+                        }
+                    }
+                }
+            }
+
+            [ModuleInitializer]
+            internal static void __Initialize__()
+
+            {
+                ShaderMixinManager.Register("XenkoLighting", new XenkoLighting());
+            }
+        }
+    }
     internal static partial class ShaderMixins
     {
         internal partial class XenkoForwardShadingEffect  : IShaderMixinBuilder
@@ -52,37 +99,11 @@ namespace SiliconStudio.Xenko.Rendering
                         context.Mixin(mixin, (extensionPixelStageSurfaceFilter));
                     }
                 }
-                var directLightGroups = context.GetParam(LightingKeys.DirectLightGroups);
-                if (directLightGroups != null)
+                context.Mixin(mixin, "XenkoLighting");
+                if (context.ChildEffectName == "ShadowMapCaster")
                 {
-                    foreach(var directLightGroup in directLightGroups)
-
-                    {
-
-                        {
-                            var __mixinToCompose__ = (directLightGroup);
-                            var __subMixin = new ShaderMixinSource();
-                            context.PushCompositionArray(mixin, "directLightGroups", __subMixin);
-                            context.Mixin(__subMixin, __mixinToCompose__);
-                            context.PopComposition();
-                        }
-                    }
-                }
-                var environmentLights = context.GetParam(LightingKeys.EnvironmentLights);
-                if (environmentLights != null)
-                {
-                    foreach(var environmentLight in environmentLights)
-
-                    {
-
-                        {
-                            var __mixinToCompose__ = (environmentLight);
-                            var __subMixin = new ShaderMixinSource();
-                            context.PushCompositionArray(mixin, "environmentLights", __subMixin);
-                            context.Mixin(__subMixin, __mixinToCompose__);
-                            context.PopComposition();
-                        }
-                    }
+                    context.Mixin(mixin, "ShadowMapCaster");
+                    return;
                 }
             }
 

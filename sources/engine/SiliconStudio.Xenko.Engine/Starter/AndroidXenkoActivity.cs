@@ -10,11 +10,13 @@ using Android.Views;
 using Android.Widget;
 using Android.Content;
 using Android.Media;
+using OpenTK.Graphics;
 using OpenTK.Platform.Android;
 using SiliconStudio.Core;
 using SiliconStudio.Xenko.Engine;
 using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.Games.Android;
+using SiliconStudio.Xenko.Graphics.OpenGL;
 
 namespace SiliconStudio.Xenko.Starter
 {
@@ -22,14 +24,14 @@ namespace SiliconStudio.Xenko.Starter
     // So the methods are implemented but the class does not implement View.IOnSystemUiVisibilityChangeListener.
     // Maybe this will change when support for API Level 10 is dropped
     // TODO: make this class implement View.IOnSystemUiVisibilityChangeListener when support of Android < 3.0 is dropped.
-    public class AndroidXenkoActivity : Activity, View.IOnTouchListener
+    public class AndroidXenkoActivity : Activity
     {
-        private AndroidGameView gameView;
+        private AndroidXenkoGameView gameView;
 
         /// <summary>
         /// The game context of the game instance.
         /// </summary>
-        protected GameContext GameContext;
+        protected GameContextAndroid GameContext;
 
         /// <summary>
         /// The instance of the game to run.
@@ -123,19 +125,7 @@ namespace SiliconStudio.Xenko.Starter
             mainLayout.AddView(gameView);
 
             // Create the Game context
-            GameContext = new GameContext(gameView, FindViewById<RelativeLayout>(Resource.Id.EditTextLayout));
-        }
-
-        public override void SetContentView(View view)
-        {
-            gameView = view as AndroidGameView;
-            SetupGameViewAndGameContext();
-        }
-
-        public override void SetContentView(View view, ViewGroup.LayoutParams @params)
-        {
-            gameView = view as AndroidGameView;
-            SetupGameViewAndGameContext();
+            GameContext = new GameContextAndroid(gameView, FindViewById<RelativeLayout>(Resource.Id.EditTextLayout));
         }
 
         protected override void OnPause()
@@ -156,11 +146,6 @@ namespace SiliconStudio.Xenko.Starter
 
             if (gameView != null)
                 gameView.Resume();
-        }
-
-        public bool OnTouch(View v, MotionEvent e)
-        {
-            throw new NotImplementedException();
         }
 
         private void InitializeFullscreenViewCallback()

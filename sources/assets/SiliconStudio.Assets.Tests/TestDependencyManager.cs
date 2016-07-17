@@ -817,6 +817,64 @@ namespace SiliconStudio.Assets.Tests
         }
 
         /// <summary>
+        /// Tests the links used for <see cref="ContentLinkType.CompositionInheritance"/>.
+        /// </summary>
+        [Test]
+        public void TestCompositionsInAndOut()
+        {
+            // -----------------------------------------------------------
+            // 3 assets
+            // a1 : two parts
+            // a2 (baseParts: a1, 2 instances -> 4 parts)
+            // a3 (base: a2)
+            // -----------------------------------------------------------
+
+            var package = new Package();
+
+            var assetItems = package.Assets;
+
+            var a1 = new TestAssetWithParts();
+            a1.Parts.Add(new AssetPartTestItem(Guid.NewGuid()));
+            a1.Parts.Add(new AssetPartTestItem(Guid.NewGuid()));
+            assetItems.Add(new AssetItem("a1", a1));
+
+            var a2 = new TestAssetWithParts();
+            var aPartInstance1 = (TestAssetWithParts)a1.CreateChildAsset("a1");
+            var aPartInstance2 = (TestAssetWithParts)a1.CreateChildAsset("a1");
+            a2.AddPart(aPartInstance1);
+            a2.AddPart(aPartInstance2);
+            assetItems.Add(new AssetItem("a2", a2));
+
+            var a3 = a2.CreateChildAsset("a2");
+            assetItems.Add(new AssetItem("a3", a3));
+
+            // Create a session with this project
+            using (var session = new PackageSession(package))
+            {
+                var dependencyManager = session.DependencyManager;
+
+                var deps = dependencyManager.FindDependencySet(aPartInstance1.Parts[0].Id);
+                Assert.NotNull(deps);
+
+                // The dependencies is the same as the a2 dependencies
+                Assert.AreEqual(a2.Id, deps.Id);
+
+                Assert.False(deps.HasMissingDependencies);
+
+                Assert.AreEqual(1, deps.LinksIn.Count()); // a3 inherits from a2
+                Assert.AreEqual(1, deps.LinksOut.Count()); // a1 use composition inheritance from a1
+
+                var linkIn = deps.LinksIn.FirstOrDefault();
+                Assert.AreEqual(a3.Id, linkIn.Item.Id);
+                Assert.AreEqual(ContentLinkType.Reference|ContentLinkType.Inheritance, linkIn.Type);
+
+                var linkOut = deps.LinksOut.FirstOrDefault();
+                Assert.AreEqual(a1.Id, linkOut.Item.Id);
+                Assert.AreEqual(ContentLinkType.CompositionInheritance, linkOut.Type);
+            }
+        }
+
+        /// <summary>
         /// Tests that the asset cached in the session's dependency manager are correctly updated when IsDirty is set to true.
         /// </summary>
         [Test]
@@ -866,8 +924,8 @@ namespace SiliconStudio.Assets.Tests
             {
                 assets.Add(new TestAssetWithParts() { Parts =
                 {
-                        new AssetPart(Guid.NewGuid()),
-                        new AssetPart(Guid.NewGuid())
+                        new AssetPartTestItem(Guid.NewGuid()),
+                        new AssetPartTestItem(Guid.NewGuid())
                 }
                 });
                 assetItems.Add(new AssetItem("asset-" + i, assets[i]));
@@ -904,122 +962,93 @@ namespace SiliconStudio.Assets.Tests
             }
         }
 
-        [Test, Ignore]
-        public void TestTrackingPackageWithAssetsAndSave()
-        {
-            var dirPath = Path.Combine(Environment.CurrentDirectory, DirectoryTestBase + @"TestTracking");
-            TryDeleteDirectory(dirPath);
+        //[Test, Ignore("Need check")]
+        //public void TestTrackingPackageWithAssetsAndSave()
+        //{
+        //    var dirPath = Path.Combine(Environment.CurrentDirectory, DirectoryTestBase + @"TestTracking");
+        //    TestHelper.TryDeleteDirectory(dirPath);
 
-            string testGenerated1 = Path.Combine(dirPath, "TestTracking.xkpkg");
+        //    string testGenerated1 = Path.Combine(dirPath, "TestTracking.xkpkg");
 
-            var project = new Package { FullPath = testGenerated1 };
-            project.Profiles.Add(new PackageProfile("Shared", new AssetFolder(".")));
-            var asset1 = new AssetObjectTest();
-            var assetItem1 = new AssetItem("asset-1", asset1);
-            project.Assets.Add(assetItem1);
+        //    var project = new Package { FullPath = testGenerated1 };
+        //    project.Profiles.Add(new PackageProfile("Shared", new AssetFolder(".")));
+        //    var asset1 = new AssetObjectTest();
+        //    var assetItem1 = new AssetItem("asset-1", asset1);
+        //    project.Assets.Add(assetItem1);
 
-            using (var session = new PackageSession(project))
-            {
+        //    using (var session = new PackageSession(project))
+        //    {
 
-                var dependencies = session.DependencyManager;
-                dependencies.TrackingSleepTime = 10;
-                dependencies.EnableTracking = true;
+        //        var dependencies = session.DependencyManager;
+        //        dependencies.TrackingSleepTime = 10;
+        //        dependencies.EnableTracking = true;
 
-                // Save the session
-                {
-                    var result = session.Save();
-                    Assert.IsFalse(result.HasErrors);
+        //        // Save the session
+        //        {
+        //            var result = session.Save();
+        //            Assert.IsFalse(result.HasErrors);
 
-                    // Wait enough time for events
-                    Thread.Sleep(100);
+        //            // Wait enough time for events
+        //            Thread.Sleep(100);
 
-                    // Make sure that save is not generating events
-                    var events = dependencies.FindAssetFileChangedEvents().ToList();
-                    Assert.AreEqual(0, events.Count);
+        //            // Make sure that save is not generating events
+        //            var events = dependencies.FindAssetFileChangedEvents().ToList();
+        //            Assert.AreEqual(0, events.Count);
 
-                    // Check tracked directories
-                    var directoriesTracked = dependencies.DirectoryWatcher.GetTrackedDirectories();
-                    Assert.AreEqual(1, directoriesTracked.Count);
-                    Assert.AreEqual(dirPath.ToLowerInvariant(), directoriesTracked[0].ToLowerInvariant());
+        //            // Check tracked directories
+        //            var directoriesTracked = dependencies.DirectoryWatcher.GetTrackedDirectories();
+        //            Assert.AreEqual(1, directoriesTracked.Count);
+        //            Assert.AreEqual(dirPath.ToLowerInvariant(), directoriesTracked[0].ToLowerInvariant());
 
-                    // Simulate multiple change an asset on the disk
-                    File.SetLastWriteTime(assetItem1.FullPath, DateTime.Now);
-                    Thread.Sleep(100);
+        //            // Simulate multiple change an asset on the disk
+        //            File.SetLastWriteTime(assetItem1.FullPath, DateTime.Now);
+        //            Thread.Sleep(100);
 
-                    // Check that we are capturing this event
-                    events = dependencies.FindAssetFileChangedEvents().ToList();
-                    Assert.AreEqual(1, events.Count);
-                    Assert.AreEqual(assetItem1.Location, events[0].AssetLocation);
-                    Assert.AreEqual(AssetFileChangedType.Updated, events[0].ChangeType);
-                }
+        //            // Check that we are capturing this event
+        //            events = dependencies.FindAssetFileChangedEvents().ToList();
+        //            Assert.AreEqual(1, events.Count);
+        //            Assert.AreEqual(assetItem1.Location, events[0].AssetLocation);
+        //            Assert.AreEqual(AssetFileChangedType.Updated, events[0].ChangeType);
+        //        }
 
-                // Save the project to another location
-                {
-                    var dirPath2 = Path.Combine(Environment.CurrentDirectory, DirectoryTestBase + @"TestTracking2");
-                    TryDeleteDirectory(dirPath2);
-                    string testGenerated2 = Path.Combine(dirPath2, "TestTracking.xkpkg");
+        //        // Save the project to another location
+        //        {
+        //            var dirPath2 = Path.Combine(Environment.CurrentDirectory, DirectoryTestBase + @"TestTracking2");
+        //            TestHelper.TryDeleteDirectory(dirPath2);
+        //            string testGenerated2 = Path.Combine(dirPath2, "TestTracking.xkpkg");
 
-                    project.FullPath = testGenerated2;
-                    var result = session.Save();
-                    Assert.IsFalse(result.HasErrors);
+        //            project.FullPath = testGenerated2;
+        //            var result = session.Save();
+        //            Assert.IsFalse(result.HasErrors);
 
-                    // Wait enough time for events
-                    Thread.Sleep(200);
+        //            // Wait enough time for events
+        //            Thread.Sleep(200);
 
-                    // Make sure that save is not generating events
-                    var events = dependencies.FindAssetFileChangedEvents().ToList();
-                    Assert.AreEqual(0, events.Count);
+        //            // Make sure that save is not generating events
+        //            var events = dependencies.FindAssetFileChangedEvents().ToList();
+        //            Assert.AreEqual(0, events.Count);
 
-                    // Check tracked directories
-                    var directoriesTracked = dependencies.DirectoryWatcher.GetTrackedDirectories();
-                    Assert.AreEqual(1, directoriesTracked.Count);
-                    Assert.AreEqual(dirPath2.ToLowerInvariant(), directoriesTracked[0].ToLowerInvariant());
-                }
+        //            // Check tracked directories
+        //            var directoriesTracked = dependencies.DirectoryWatcher.GetTrackedDirectories();
+        //            Assert.AreEqual(1, directoriesTracked.Count);
+        //            Assert.AreEqual(dirPath2.ToLowerInvariant(), directoriesTracked[0].ToLowerInvariant());
+        //        }
 
-                // Copy file to simulate a new file on the disk (we will not try to load it as it has the same guid 
-                {
-                    var fullPath = assetItem1.FullPath;
-                    var newPath = Path.Combine(Path.GetDirectoryName(fullPath), Path.GetFileNameWithoutExtension(fullPath) + "2" + Path.GetExtension(fullPath));
-                    File.Copy(fullPath, newPath);
+        //        // Copy file to simulate a new file on the disk (we will not try to load it as it has the same guid 
+        //        {
+        //            var fullPath = assetItem1.FullPath;
+        //            var newPath = Path.Combine(Path.GetDirectoryName(fullPath), Path.GetFileNameWithoutExtension(fullPath) + "2" + Path.GetExtension(fullPath));
+        //            File.Copy(fullPath, newPath);
 
-                    // Wait enough time for events
-                    Thread.Sleep(200);
+        //            // Wait enough time for events
+        //            Thread.Sleep(200);
 
-                    // Make sure that save is not generating events
-                    var events = dependencies.FindAssetFileChangedEvents().ToList();
-                    Assert.AreEqual(1, events.Count);
-                    Assert.IsTrue((events[0].ChangeType & AssetFileChangedType.Added) != 0);
-                }
-            }
-        }
-
-        private static void TryDeleteDirectory(string path)
-        {
-            if (Directory.Exists(path))
-            {
-                try
-                {
-                    // bug with Directory.Delete not always working
-                    // Trying our best to make sure the directory will be deleted, so
-                    // we delete all files manually before
-                    foreach (var file in Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories))
-                    {
-                        try
-                        {
-                            File.Delete(file);
-                        }
-                        catch (Exception)
-                        {
-                        }
-                    }
-
-                    Directory.Delete(path, true);
-                }
-                catch (Exception)
-                {
-                    Console.WriteLine("Warning, unable to delete directory [{0}]", path);
-                }
-            }
-        }
+        //            // Make sure that save is not generating events
+        //            var events = dependencies.FindAssetFileChangedEvents().ToList();
+        //            Assert.AreEqual(1, events.Count);
+        //            Assert.IsTrue((events[0].ChangeType & AssetFileChangedType.Added) != 0);
+        //        }
+        //    }
+        //}
     }
 }

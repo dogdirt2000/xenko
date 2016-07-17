@@ -4,7 +4,6 @@ using System;
 using SiliconStudio.Core;
 using SiliconStudio.Core.IO;
 using SiliconStudio.Core.Serialization;
-using SiliconStudio.Core.Serialization.Serializers;
 
 namespace SiliconStudio.Assets
 {
@@ -13,7 +12,8 @@ namespace SiliconStudio.Assets
     /// </summary>
     [DataContract("AssetBase")]
     [DataSerializer(typeof(AssetBase.Serializer))]
-    public sealed class AssetBase : IContentReference
+    [NonIdentifiable]
+    public sealed class AssetBase : IReference
     {
         private readonly UFile location;
         private readonly Asset asset;

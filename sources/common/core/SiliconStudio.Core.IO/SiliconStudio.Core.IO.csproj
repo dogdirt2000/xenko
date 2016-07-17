@@ -17,10 +17,14 @@
     <SiliconStudioPlatformDependent>true</SiliconStudioPlatformDependent>
     <XenkoBuildTags>*</XenkoBuildTags>
   </PropertyGroup>
-  <ItemGroup Condition=" '$(AutoIncludeSystemAssembly)' != 'true'">
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-  </ItemGroup>
+  <Choose>
+    <When Condition=" '$(AutoIncludeSystemAssembly)' != 'true'">
+      <ItemGroup>
+        <Reference Include="System" />
+        <Reference Include="System.Core" />
+      </ItemGroup>
+    </When>
+  </Choose>
   <!-- Include platform dependent assembly when specified -->
   <Choose>
     <When Condition="'$(SiliconStudioPlatform)' == 'WindowsStore' or '$(SiliconStudioPlatform)' == 'WindowsPhone' or '$(SiliconStudioPlatform)' == 'Windows10'">
@@ -29,6 +33,18 @@
           <SpecificVersion>False</SpecificVersion>
           <HintPath>$(XenkoSharpDXSdkBinDir)\SharpDX.dll</HintPath>
         </Reference>
+      </ItemGroup>
+    </When>
+    <When Condition=" '$(SiliconStudioPlatform)' == 'Android' ">
+      <ItemGroup>
+        <Compile Include="System.IO.Compression.Zip\ApkExpansionSupport.cs" />
+        <Compile Include="System.IO.Compression.Zip\Compression.cs" />
+        <Compile Include="System.IO.Compression.Zip\Crc32.cs" />
+        <Compile Include="System.IO.Compression.Zip\ExpansionZipFile.cs" />
+        <Compile Include="System.IO.Compression.Zip\ZipFile.cs" />
+        <Compile Include="System.IO.Compression.Zip\ZipFileEntry.cs" />
+        <Compile Include="System.IO.Compression.Zip\ZipFileValidationHandler.cs" />
+        <Compile Include="System.IO.Compression.Zip\ZipStream.cs" />
       </ItemGroup>
     </When>
   </Choose>
@@ -62,16 +78,6 @@
     <Compile Include="VirtualFileSystem.cs" />
     <Compile Include="VirtualSearchOption.cs" />
     <Compile Include="VirtualWatcherChangeTypes.cs" />
-  </ItemGroup>
-  <ItemGroup Condition=" '$(SiliconStudioPlatform)' == 'Android' ">
-    <Compile Include="System.IO.Compression.Zip\ApkExpansionSupport.cs" />
-    <Compile Include="System.IO.Compression.Zip\Compression.cs" />
-    <Compile Include="System.IO.Compression.Zip\Crc32.cs" />
-    <Compile Include="System.IO.Compression.Zip\ExpansionZipFile.cs" />
-    <Compile Include="System.IO.Compression.Zip\ZipFile.cs" />
-    <Compile Include="System.IO.Compression.Zip\ZipFileEntry.cs" />
-    <Compile Include="System.IO.Compression.Zip\ZipFileValidationHandler.cs" />
-    <Compile Include="System.IO.Compression.Zip\ZipStream.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SiliconStudio.Core\SiliconStudio.Core.csproj">

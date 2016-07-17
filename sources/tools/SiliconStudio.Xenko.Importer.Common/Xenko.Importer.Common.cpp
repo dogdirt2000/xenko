@@ -8,6 +8,7 @@ using namespace System::IO;
 using namespace SiliconStudio::Core::Diagnostics;
 using namespace SiliconStudio::Core::Mathematics;
 using namespace SiliconStudio::Core::Serialization;
+using namespace SiliconStudio::Xenko::Animations;
 using namespace SiliconStudio::Xenko::Rendering;
 using namespace SiliconStudio::Xenko::Rendering::Materials;
 using namespace SiliconStudio::Xenko::Rendering::Materials::ComputeColors;
@@ -17,16 +18,26 @@ using namespace SiliconStudio::Xenko::Graphics;
 using namespace SiliconStudio::Xenko::Shaders;
 
 namespace SiliconStudio { namespace Xenko { namespace Importer { namespace Common {
-	
+
+public ref class AnimationInfo
+{
+public:
+	AnimationInfo()
+	{
+		AnimationClips = gcnew Dictionary<System::String^, AnimationClip^>();
+	}
+
+	TimeSpan Duration;
+	Dictionary<System::String^, AnimationClip^>^ AnimationClips;
+};
+
 public ref class MeshParameters
 {
 public:
 	MeshParameters()
 	{
-		Parameters = gcnew ParameterCollection();
 	}
 
-	ParameterCollection^ Parameters;
 	String^ MaterialName;
 	String^ MeshName;
 	String^ NodeName;
@@ -69,12 +80,7 @@ public:
 	{
 		ParameterKey<Texture^>^ parameterKey;
 
-		auto texture = gcnew ContentReference<Texture^>();
-
 		auto url = vfsOutputPath + "_" + Path::GetFileNameWithoutExtension(sourceTextureFile);
-
-		texture->Location = url;
-		//assetManager->Url->Set(texture, url);
 
 		if (File::Exists(sourceTextureFile))
 		{
@@ -84,10 +90,6 @@ public:
 								nullptr, CallerInfo::Get(__FILEW__, __FUNCTIONW__, __LINE__));
 			}
 		}
-
-		//meshData->Parameters->Set(
-		//	parameterKey = ParameterKeys::IndexedKey(surfaceMaterialKey, textureCount++),
-		//	texture);
 
 		parameterKey = ParameterKeys::IndexedKey(surfaceMaterialKey, textureCount++);
 		String^ uvSetName = "TEXCOORD";
@@ -104,7 +106,7 @@ public:
 		return currentComposition;
 	}
 
-	static ComputeTextureColor^ GenerateMaterialTextureNode(String^ vfsOutputPath, String^ sourceTextureFile, size_t textureUVSetIndex, Vector2 textureUVscaling, bool wrapTextureU, bool wrapTextureV, Logger^ logger)
+	static ComputeTextureColor^ GenerateMaterialTextureNode(String^ vfsOutputPath, String^ sourceTextureFile, size_t textureUVSetIndex, Vector2 textureUVscaling, TextureAddressMode addressModeU, TextureAddressMode addressModeV, Logger^ logger)
 	{
 		auto textureFileName = Path::GetFileNameWithoutExtension(sourceTextureFile);
 		auto url = vfsOutputPath + "_" + textureFileName;
@@ -121,11 +123,11 @@ public:
 		auto uvScaling = textureUVscaling;
 		auto textureName = textureFileName;
 	
-		auto texture = AttachedReferenceManager::CreateSerializableVersion<Texture^>(System::Guid(), textureName);
+		auto texture = AttachedReferenceManager::CreateProxyObject<Texture^>(System::Guid(), textureName);
 
 		auto currentTexture = gcnew ComputeTextureColor(texture, (TextureCoordinate)textureUVSetIndex, uvScaling, Vector2::Zero);
-		currentTexture->AddressModeU = wrapTextureU ? TextureAddressMode::Wrap : TextureAddressMode::Clamp;
-		currentTexture->AddressModeV = wrapTextureV ? TextureAddressMode::Wrap : TextureAddressMode::Clamp;
+		currentTexture->AddressModeU = addressModeU;
+		currentTexture->AddressModeV = addressModeV;
 	
 		return currentTexture;
 	}

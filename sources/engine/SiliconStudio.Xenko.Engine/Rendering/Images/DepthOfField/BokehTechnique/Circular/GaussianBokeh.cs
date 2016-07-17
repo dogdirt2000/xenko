@@ -18,7 +18,7 @@ namespace SiliconStudio.Xenko.Rendering.Images
     /// </remarks>
     public class GaussianBokeh : BokehBlur
     {
-        private ImageEffect directionalBlurEffect;
+        private ImageEffectShader directionalBlurEffect;
 
         private int tapCount;
 
@@ -54,7 +54,7 @@ namespace SiliconStudio.Xenko.Rendering.Images
             directionalBlurEffect = ToLoadAndUnload(new ImageEffectShader("DepthAwareDirectionalBlurEffect"));
         }
 
-        protected override void DrawCore(RenderContext context)
+        protected override void DrawCore(RenderDrawContext context)
         {
             // Update the weight array if necessary
             if (weightsDirty || tapCount == 0)
@@ -75,6 +75,7 @@ namespace SiliconStudio.Xenko.Rendering.Images
             var tapNumber = 2 * tapCount - 1;
             directionalBlurEffect.Parameters.Set(DepthAwareDirectionalBlurKeys.Count, tapCount);
             directionalBlurEffect.Parameters.Set(DepthAwareDirectionalBlurKeys.TotalTap, tapNumber);
+            directionalBlurEffect.EffectInstance.UpdateEffect(context.GraphicsDevice);
             directionalBlurEffect.Parameters.Set(DepthAwareDirectionalBlurUtilKeys.Radius, Radius);
             directionalBlurEffect.Parameters.Set(DepthAwareDirectionalBlurUtilKeys.TapWeights, tapWeights);
 

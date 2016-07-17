@@ -17,7 +17,7 @@ namespace SiliconStudio.Xenko.Rendering.Materials.ComputeColors
         [InlineProperty]
         public IVertexStreamDefinition Stream { get; set; }
 
-        public override ShaderSource GenerateShaderSource(MaterialGeneratorContext context, MaterialComputeColorKeys baseKeys)
+        public override ShaderSource GenerateShaderSource(ShaderGeneratorContext context, MaterialComputeColorKeys baseKeys)
         {
             var channel = GetColorChannelAsString();
             return Stream == null || string.IsNullOrWhiteSpace(Stream.GetSemanticName()) ? new ShaderClassSource("ComputeColor") : new ShaderClassSource("ComputeColorFromStream", Stream.GetSemanticName(), channel);

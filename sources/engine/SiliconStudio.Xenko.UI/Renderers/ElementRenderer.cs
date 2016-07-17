@@ -4,6 +4,7 @@
 using SiliconStudio.Core;
 using SiliconStudio.Core.Mathematics;
 using SiliconStudio.Core.Serialization.Assets;
+using SiliconStudio.Xenko.Games;
 using SiliconStudio.Xenko.Graphics;
 
 namespace SiliconStudio.Xenko.UI.Renderers
@@ -43,17 +44,17 @@ namespace SiliconStudio.Xenko.UI.Renderers
         /// <summary>
         /// A depth stencil state that keep the stencil value in any cases.
         /// </summary>
-        public DepthStencilState KeepStencilValueState { get { return UI.KeepStencilValueState; } }
+        public DepthStencilStateDescription KeepStencilValueState { get { return UI.KeepStencilValueState; } }
 
         /// <summary>
         /// A depth stencil state that increase the stencil value if the stencil test passes.
         /// </summary>
-        public DepthStencilState IncreaseStencilValueState { get { return UI.IncreaseStencilValueState; } }
+        public DepthStencilStateDescription IncreaseStencilValueState { get { return UI.IncreaseStencilValueState; } }
 
         /// <summary>
         /// A depth stencil state that decrease the stencil value if the stencil test passes.
         /// </summary>
-        public DepthStencilState DecreaseStencilValueState { get { return UI.DecreaseStencilValueState; } }
+        public DepthStencilStateDescription DecreaseStencilValueState { get { return UI.DecreaseStencilValueState; } }
 
         /// <summary>
         /// Create an instance of an UI element renderer.
@@ -63,7 +64,14 @@ namespace SiliconStudio.Xenko.UI.Renderers
         {
             Asset = services.GetSafeServiceAs<IAssetManager>();
             GraphicsDeviceService = services.GetSafeServiceAs<IGraphicsDeviceService>();
+
             UI = services.GetServiceAs<UISystem>();
+            if (UI == null)
+            {
+                UI = new UISystem(services);
+                var gameSystems = services.GetServiceAs<IGameSystemCollection>();
+                gameSystems?.Add(UI);
+            }
         }
 
         /// <summary>
